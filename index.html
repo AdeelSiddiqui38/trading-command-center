@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://unpkg.com; style-src 'unsafe-inline'; img-src 'self' https: data:; font-src data: https:; connect-src 'self' https://www.alphavantage.co https://finnhub.io wss://ws.finnhub.io https://api.twelvedata.com https://api.anthropic.com https://*.tradingview.com; frame-src https://*.tradingview.com https://*.tradingview-widget.com; manifest-src 'self'; worker-src 'self';">
+<title>Adeel's Trading Command Center</title>
+<meta name="theme-color" content="#0b0e14">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trading CC">
+<style>
+:root{
+  --bg:#0b0e14; --panel:#12161f; --panel2:#171c27; --border:#232a38;
+  --text:#d7dde8; --dim:#7a8599; --green:#22c55e; --red:#ef4444;
+  --amber:#f59e0b; --blue:#3b82f6; --purple:#a78bfa;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+button{cursor:pointer;font-family:inherit}
+input,select{font-family:inherit;background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:12px}
+input:focus{outline:1px solid var(--blue)}
+
+/* ---------- Top bar ---------- */
+#topbar{display:flex;align-items:center;gap:14px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex-wrap:wrap}
+#topbar .logo{font-weight:700;font-size:15px;letter-spacing:.3px}
+#topbar .logo span{color:var(--green)}
+.clock{font-variant-numeric:tabular-nums;color:var(--dim)}
+.session{padding:3px 10px;border-radius:20px;font-weight:600;font-size:11px}
+.session.pre{background:#3b2f0e;color:var(--amber)}
+.session.open{background:#0e3b21;color:var(--green)}
+.session.after{background:#2a1c3f;color:var(--purple)}
+.session.closed{background:#3b0e0e;color:var(--red)}
+.pnlbox{display:flex;align-items:center;gap:8px;margin-left:auto}
+.pnlbox .stat{text-align:right}
+.pnlbox .stat .lbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.pnlbox .stat .val{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums}
+.meter{width:130px;height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.meter>div{height:100%;transition:width .3s}
+#btnSettings,#btnRefresh{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px}
+#btnRefresh{background:#123c66;border-color:#1d5a94;font-weight:600}
+#btnRefresh:hover{background:#175089}
+
+/* ---------- Tabs ---------- */
+#tabs{display:flex;gap:2px;background:var(--panel);padding:0 14px;border-bottom:1px solid var(--border)}
+.tab{padding:8px 16px;background:none;border:none;color:var(--dim);font-size:12px;font-weight:600;border-bottom:2px solid transparent}
+.tab.active{color:var(--text);border-bottom-color:var(--green)}
+.tab.locked{opacity:.45;cursor:not-allowed}
+
+/* ---------- Grid ---------- */
+#grid{flex:1;display:grid;grid-template-columns:1.05fr 1fr 1fr 1fr;grid-template-rows:1.25fr 1fr;gap:8px;padding:8px;min-height:0}
+#chartPanel{grid-column:2/4}
+#tvwrap{flex:1;min-height:0}
+#tvwrap>div{height:100%!important}
+.tvbtn{background:#123c66;border:1px solid #1d5a94;color:#7cb8f0;border-radius:5px;padding:2px 10px;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0;text-decoration:none;cursor:pointer}
+.tvbtn:hover{background:#175089}
+.tvbtn.on{background:#0e3b21;border-color:#1d6b3f;color:var(--green)}
+.mini.on{color:var(--green);border-color:var(--green)}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.panel h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
+.panel h2 .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.panel h2 .count{margin-left:auto;background:var(--panel2);border-radius:10px;padding:1px 8px;font-size:10px;color:var(--text)}
+.panel h2 .mini{margin-left:auto;background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:2px 8px;font-size:10px;text-transform:none;letter-spacing:0}
+.body{flex:1;overflow-y:auto;min-height:0}
+.body::-webkit-scrollbar{width:8px}
+.body::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+#gapScanner{grid-row:span 2}
+#gridFx{flex:1;display:none;grid-template-columns:1fr 1.6fr 1fr;grid-template-rows:1.2fr 1fr;gap:8px;padding:8px;min-height:0}
+#fxChartPanel{grid-row:span 2}
+#fxChartWrap{flex:1;min-height:0}
+#fxChartWrap>div{height:100%!important}
+.sess-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #1a2030;font-size:12px}
+.sess-open{color:var(--green);font-weight:700}
+.sess-closed{color:var(--dim)}
+.prime{background:#0e3b21;color:var(--green);margin:8px 12px;padding:8px;border-radius:6px;text-align:center;font-weight:700;font-size:11px}
+
+/* ---------- Tables ---------- */
+table{width:100%;border-collapse:collapse}
+th{position:sticky;top:0;background:var(--panel);font-size:10px;text-transform:uppercase;color:var(--dim);text-align:right;padding:6px 8px;border-bottom:1px solid var(--border);letter-spacing:.4px;z-index:1}
+th:first-child,td:first-child{text-align:left}
+td{padding:6px 8px;text-align:right;border-bottom:1px solid #1a2030;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.row:hover{background:var(--panel2);cursor:pointer}
+.tk{font-weight:700;color:#fff}
+.up{color:var(--green)} .dn{color:var(--red)}
+.pillars{display:inline-flex;gap:2px}
+.pill{width:9px;height:9px;border-radius:2px;background:#2a3243}
+.pill.on{background:var(--green)}
+.addbtn{background:none;border:1px solid var(--border);color:var(--dim);border-radius:4px;padding:1px 7px;font-size:11px}
+.addbtn:hover{border-color:var(--green);color:var(--green)}
+
+/* ---------- News ---------- */
+.news-item{padding:8px 12px;border-bottom:1px solid #1a2030}
+.news-item .meta{font-size:10px;color:var(--dim);margin-bottom:3px;display:flex;gap:8px}
+.news-item .meta .src{color:var(--blue)}
+.news-item a{color:var(--text);text-decoration:none;font-size:12px;line-height:1.4}
+.news-item a:hover{color:var(--blue)}
+.news-item .tick{background:#123c66;color:#7cb8f0;border-radius:4px;padding:0 5px;font-weight:700}
+
+/* ---------- Watchlist cards ---------- */
+.card{margin:8px;padding:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px}
+.card .top{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.card .top .tk{font-size:15px}
+.card .top .px{font-size:13px}
+.card .top .x{margin-left:auto;background:none;border:none;color:var(--dim);font-size:14px}
+.card .top .x:hover{color:var(--red)}
+.levels{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:6px 0}
+.levels .lv{background:var(--bg);border-radius:6px;padding:5px;text-align:center}
+.levels .lv .l{font-size:9px;text-transform:uppercase;color:var(--dim);letter-spacing:.5px}
+.levels .lv .v{font-weight:700;font-size:12px;margin-top:2px}
+.rangebar{height:6px;background:linear-gradient(90deg,var(--red),var(--amber),var(--green));border-radius:3px;position:relative;margin:8px 0 2px}
+.rangebar .pos{position:absolute;top:-3px;width:3px;height:12px;background:#fff;border-radius:2px}
+.rangelabels{display:flex;justify-content:space-between;font-size:9px;color:var(--dim)}
+.card .why{font-size:11px;color:var(--dim);line-height:1.45;margin-top:6px}
+.card .aibtn{width:100%;margin-top:8px;background:#2a1c3f;border:1px solid #4a3568;color:var(--purple);border-radius:6px;padding:5px;font-size:11px;font-weight:600}
+.card .aibtn:hover{background:#392658}
+.hodflag{background:#0e3b21;color:var(--green);border-radius:4px;padding:0 6px;font-size:10px;font-weight:700}
+
+/* ---------- Trade log ---------- */
+#tradeForm{display:flex;gap:6px;padding:8px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap;flex-shrink:0}
+#tradeForm input{width:72px}
+#tradeForm input.wide{width:90px}
+#tradeForm button{background:#0e3b21;border:1px solid #1d6b3f;color:var(--green);border-radius:6px;padding:6px 14px;font-weight:700}
+.dellog{background:none;border:none;color:var(--dim)}
+.dellog:hover{color:var(--red)}
+
+/* ---------- Banners / modal ---------- */
+#maxLossBanner{display:none;background:var(--red);color:#fff;text-align:center;font-weight:800;padding:8px;letter-spacing:1px}
+#goalBanner{display:none;background:var(--green);color:#04210f;text-align:center;font-weight:800;padding:8px;letter-spacing:1px}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:center;justify-content:center}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;width:480px;max-height:85vh;overflow-y:auto}
+.modal h3{margin-bottom:14px;font-size:15px}
+.modal label{display:block;font-size:11px;color:var(--dim);margin:12px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+.modal input{width:100%}
+.modal .hint{font-size:11px;color:var(--dim);margin-top:4px;line-height:1.4}
+.modal .hint a{color:var(--blue)}
+.modal .actions{display:flex;gap:8px;margin-top:18px;justify-content:flex-end}
+.modal .actions button{border-radius:6px;padding:8px 16px;font-weight:600;border:1px solid var(--border)}
+.modal .save{background:#0e3b21;color:var(--green);border-color:#1d6b3f}
+.modal .cancel{background:var(--panel2);color:var(--dim)}
+.empty{padding:24px;text-align:center;color:var(--dim);font-size:12px;line-height:1.6}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+#status{font-size:11px;color:var(--dim)}
+
+/* ================= MOTION & GLOW LAYER ================= */
+@keyframes bgshift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(34,197,94,.5)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(34,197,94,0)}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes slidein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fadeup{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes fup{0%{background:rgba(34,197,94,.35)}100%{background:transparent}}
+@keyframes fdn{0%{background:rgba(239,68,68,.35)}100%{background:transparent}}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+@keyframes hodpulse{0%,100%{box-shadow:0 0 4px rgba(34,197,94,.6)}50%{box-shadow:0 0 14px rgba(34,197,94,.9)}}
+@keyframes logoglow{0%,100%{filter:drop-shadow(0 0 6px rgba(34,197,94,.5))}50%{filter:drop-shadow(0 0 14px rgba(34,197,94,.9))}}
+@keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(100vh)}}
+
+body{
+  background:
+    radial-gradient(1100px 500px at 85% -10%, rgba(34,197,94,.07), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, rgba(59,130,246,.07), transparent 60%),
+    linear-gradient(135deg,#0b0e14 0%,#0d1220 50%,#0b0e14 100%);
+  background-size:100% 100%,100% 100%,300% 300%;
+  animation:bgshift 24s ease infinite;
+}
+body::after{content:'';position:fixed;left:0;right:0;height:120px;pointer-events:none;z-index:5;
+  background:linear-gradient(180deg,transparent,rgba(34,197,94,.025),transparent);
+  animation:scanline 9s linear infinite}
+
+.panel{
+  background:linear-gradient(180deg,rgba(23,28,39,.85),rgba(15,19,28,.95));
+  backdrop-filter:blur(4px);
+  box-shadow:0 4px 18px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03);
+  transition:border-color .25s, box-shadow .25s, transform .25s;
+  animation:slidein .45s ease both;
+}
+.panel:nth-child(2){animation-delay:.06s}.panel:nth-child(3){animation-delay:.12s}
+.panel:nth-child(4){animation-delay:.18s}.panel:nth-child(5){animation-delay:.24s}.panel:nth-child(6){animation-delay:.3s}
+.panel:hover{border-color:#31527e;box-shadow:0 6px 26px rgba(0,0,0,.5),0 0 18px rgba(59,130,246,.08)}
+.panel h2 .dot{animation:pulse 2.4s ease infinite}
+
+#topbar .logo{
+  background:linear-gradient(90deg,#e8fff1,#22c55e,#7cb8f0,#e8fff1);
+  background-size:250% auto;-webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;animation:shimmer 6s linear infinite, logoglow 4s ease infinite}
+#topbar .logo span{-webkit-text-fill-color:transparent}
+.session.open{animation:pulse 2s ease infinite}
+.pnlbox .val{transition:color .3s;text-shadow:0 0 12px currentColor}
+.pnlbox .val.pop{animation:pop .45s ease}
+.meter>div{box-shadow:0 0 8px currentColor}
+
+tr.row{transition:background .2s}
+tr.row:hover{background:linear-gradient(90deg,rgba(59,130,246,.12),rgba(23,28,39,.6));box-shadow:inset 2px 0 0 var(--blue)}
+tr.row:hover .tk{color:#7cb8f0;text-shadow:0 0 8px rgba(124,184,240,.5)}
+td{animation:fadeup .3s ease both}
+td.fup{animation:fup 1s ease}
+td.fdn{animation:fdn 1s ease}
+
+.card{animation:slidein .35s ease both;transition:transform .2s, box-shadow .2s, border-color .2s}
+.card:hover{transform:translateY(-2px);border-color:#3a4763;box-shadow:0 8px 20px rgba(0,0,0,.45),0 0 14px rgba(167,139,250,.1)}
+.hodflag{animation:hodpulse 1.6s ease infinite}
+.rangebar .pos{transition:left .6s cubic-bezier(.2,.8,.2,1);box-shadow:0 0 8px #fff}
+
+button,.tvbtn,.addbtn,.aibtn,.mini{transition:transform .15s, box-shadow .15s, background .2s, color .2s, border-color .2s}
+button:hover,.tvbtn:hover,.aibtn:hover{transform:translateY(-1px)}
+button:active{transform:scale(.96)}
+#btnRefresh{box-shadow:0 0 12px rgba(29,90,148,.45)}
+#btnRefresh:hover{box-shadow:0 0 18px rgba(59,130,246,.6)}
+.addbtn:hover{box-shadow:0 0 10px rgba(34,197,94,.35)}
+.aibtn{position:relative;overflow:hidden}
+.aibtn:hover{box-shadow:0 0 14px rgba(167,139,250,.35)}
+
+#maxLossBanner,#goalBanner,#cooldownBanner{
+  background-size:200% auto!important;
+  animation:shimmer 2.2s linear infinite}
+#maxLossBanner{background-image:linear-gradient(90deg,#b91c1c,#ef4444,#b91c1c)}
+#goalBanner{background-image:linear-gradient(90deg,#15803d,#22c55e,#15803d)}
+#cooldownBanner{background-image:linear-gradient(90deg,#b45309,#f59e0b,#b45309)}
+
+.tab{transition:color .2s, border-color .2s, text-shadow .2s}
+.tab.active{text-shadow:0 0 10px rgba(34,197,94,.5)}
+.prime{animation:hodpulse 2s ease infinite}
+.empty{animation:fadeup .5s ease both}
+::selection{background:rgba(34,197,94,.3)}
+.disclaimer{font-size:10px;color:#4a5468;padding:4px 14px;text-align:center;background:var(--panel);border-top:1px solid var(--border)}
+
+/* ---------- Mobile / PWA layout ---------- */
+@media (max-width:900px){
+  body{height:auto;min-height:100vh;overflow:auto;animation:none}
+  body::after{display:none} /* drop scanline sweep on phone — battery */
+  #topbar{gap:8px;padding:8px 10px}
+  #topbar .logo{font-size:14px}
+  .pnlbox{margin-left:0;width:100%;flex-wrap:wrap;gap:6px}
+  .meter{width:90px}
+  #grid,#gridFx{display:flex;flex-direction:column;gap:10px;padding:8px}
+  .panel{min-height:300px;max-height:430px;animation:none}
+  #chartPanel,#fxChartPanel{min-height:430px}
+  .modal{width:94vw;padding:16px}
+  input,select{font-size:16px} /* 16px stops iOS auto-zoom on focus */
+  .tab{padding:12px 18px;font-size:13px}
+  td,th{padding:9px 6px}
+  .addbtn,.mini,.tvbtn,.aibtn{padding:7px 10px;font-size:12px}
+  #tradeForm input,#tradeForm select{flex:1 1 28%;width:auto}
+  .card .aibtn{padding:10px}
+}
+</style>
+</head>
+<body>
+
+<div id="maxLossBanner">⛔ MAX DAILY LOSS HIT — STOP TRADING. WALK AWAY. TOMORROW IS A NEW DAY.</div>
+<div id="cooldownBanner" style="display:none;background:var(--amber);color:#33230a;text-align:center;font-weight:800;padding:8px;letter-spacing:1px"></div>
+<div id="goalBanner">✅ DAILY GOAL HIT — protect your profits. Trade with house money or call it a day.</div>
+
+<div id="topbar">
+  <div class="logo">⚡ Trading <span>Command Center</span></div>
+  <div class="clock" id="clock">--:--:-- ET</div>
+  <div class="session closed" id="session">CLOSED</div>
+  <div class="session closed" id="autoBadge" style="display:none" title="Auto-scan — configure in ⚙ Settings" onclick="openSettings()">AUTO</div>
+  <button id="wakeBtn" onclick="toggleWake()" style="display:none;background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600" title="Keep screen awake while trading">☀ awake</button>
+  <span id="status"></span>
+  <div class="pnlbox">
+    <select id="brokerSel" onchange="setBroker(this.value)" title="Commissions applied to logged trades">
+      <option value="IB">IBKR Pro</option><option value="QT">Questrade</option>
+    </select>
+    <button id="modeToggle" onclick="toggleTradeMode()" style="border-radius:6px;padding:6px 12px;font-weight:800;font-size:11px;border:1px solid var(--border)">PAPER</button>
+    <div class="stat"><div class="lbl">Daily P&L <span id="pnlMode"></span></div><div class="val" id="pnlVal">$0</div></div>
+    <div class="stat"><div class="lbl">Goal <span id="goalLbl"></span></div><div class="meter"><div id="goalMeter" style="background:var(--green);width:0%"></div></div></div>
+    <div class="stat"><div class="lbl">Max Loss <span id="lossLbl"></span></div><div class="meter"><div id="lossMeter" style="background:var(--red);width:0%"></div></div></div>
+    <button id="btnRefresh" onclick="refreshAll()">↻ Scan</button>
+    <button id="btnSettings" onclick="openSettings()">⚙</button>
+  </div>
+</div>
+
+<div style="height:44px;overflow:hidden;background:var(--panel);border-bottom:1px solid var(--border)">
+  <div class="tradingview-widget-container">
+    <div class="tradingview-widget-container__widget"></div>
+    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+    {"symbols":[{"proName":"AMEX:SPY","title":"S&P 500"},{"proName":"NASDAQ:QQQ","title":"Nasdaq"},{"proName":"AMEX:IWM","title":"Small Caps"},{"proName":"OANDA:XAUUSD","title":"Gold"},{"proName":"FX:EURUSD","title":"EUR/USD"},{"proName":"FX:USDCAD","title":"USD/CAD"},{"proName":"TVC:VIX","title":"VIX"}],"showSymbolLogo":true,"colorTheme":"dark","isTransparent":true,"displayMode":"adaptive","locale":"en"}
+    </script>
+  </div>
+</div>
+
+<div id="tabs">
+  <button class="tab active" id="tabStocks" onclick="switchTab('stocks')">Stocks — Momentum</button>
+  <button class="tab" id="tabFx" onclick="switchTab('fx')">Gold & Forex</button>
+</div>
+
+<div id="grid">
+  <div class="panel" id="gapScanner">
+    <h2><span class="dot" style="background:var(--amber)"></span>Scanner
+      <button class="mini" id="scanModeAV" onclick="setScanMode('av')">Top Gainers</button>
+      <button class="mini" id="scanModePM" onclick="setScanMode('pm')">🌅 Pre-Mkt Gaps</button>
+      <span class="count" id="gapCount">0</span></h2>
+    <div class="body" id="gapBody"><div class="empty">Set your API keys in ⚙ Settings, then hit ↻ Scan.<br><br>Pillars scored: $1–$20 price · +10% day · high volume · low float · news catalyst</div></div>
+  </div>
+
+  <div class="panel" id="chartPanel">
+    <h2><span class="dot" style="background:#26a69a"></span>Chart — <span id="chartSym" style="color:#fff;text-transform:none">select a ticker</span>
+      <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
+        <button class="tvbtn" id="mTv" onclick="setMode('tv')">TV 1-min</button>
+        <button class="tvbtn" id="mLive" onclick="setMode('live')">⚡ Live seconds</button>
+        <a class="tvbtn" id="tvLink" href="https://www.tradingview.com/chart/" target="_blank">↗ Trade on TradingView</a>
+      </span>
+    </h2>
+    <div id="tvwrap"><div class="empty" style="padding-top:60px">Click any ticker in the scanner, HOD panel, or watchlist to load its live chart here.<br><br>Connect Questrade inside TradingView (Trading Panel → See all brokers) to place orders from the full chart ↗</div></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--green)"></span>HOD Momentum — Watchlist Quotes <button class="mini" onclick="refreshQuotes()">↻ quotes</button></h2>
+    <div class="body" id="hodBody"><div class="empty">Add tickers from the scanner (+ button) or type below in the Watchlist panel.<br>Stocks within 2% of high-of-day get flagged 🔥 HOD.</div></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--blue)"></span>Live News Feed <button class="mini" onclick="loadNews()">↻ news</button></h2>
+    <div class="body" id="newsBody"><div class="empty">Market + watchlist news appears here (Finnhub).</div></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--purple)"></span>Watchlist — Trade Plans
+      <span style="margin-left:auto;display:flex;gap:6px;text-transform:none">
+        <input id="wlInput" placeholder="Add ticker…" style="width:90px;padding:3px 6px" onkeydown="if(event.key==='Enter')addTickerFromInput()">
+      </span>
+    </h2>
+    <div class="body" id="wlBody"><div class="empty">No tickers yet. Add from scanner or type a symbol above.<br>Use ✨ AI Trade Plan on each card for entry / stop / target.</div></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--red)"></span>Trade Log <button class="mini" onclick="openStats()">📊 Edge Stats</button> <span class="count" id="logCount">0</span></h2>
+    <div id="tradeForm">
+      <input id="tSym" placeholder="Ticker" style="width:64px;text-transform:uppercase">
+      <input id="tQty" placeholder="Shares" type="number" style="width:60px">
+      <input id="tIn" placeholder="Entry" type="number" step="0.01" style="width:70px">
+      <input id="tOut" placeholder="Exit" type="number" step="0.01" style="width:70px">
+      <select id="tSide"><option value="L">Long</option><option value="S">Short</option></select>
+      <select id="tSetup"><option>Gap&Go</option><option>Bull Flag</option><option>Micro Pullback</option><option>HOD Break</option><option>FX/Gold</option><option>Other</option></select>
+      <button onclick="logTrade()">Log</button>
+    </div>
+    <div class="body" id="logBody"></div>
+  </div>
+</div>
+
+<div id="gridFx">
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--amber)"></span>Gold & FX Quotes <button class="mini" onclick="fxRefresh()">↻ quotes</button></h2>
+    <div class="body" id="fxQuotesBody"><div class="empty">Add your Twelve Data key in ⚙ Settings, then ↻ quotes.<br><br>Covers: Gold (XAU/USD), EUR/USD, GBP/USD, USD/JPY, USD/CAD</div></div>
+  </div>
+
+  <div class="panel" id="fxChartPanel">
+    <h2><span class="dot" style="background:#26a69a"></span>Chart — <span id="fxChartSym" style="color:#fff;text-transform:none">Gold</span>
+      <a class="tvbtn" id="fxTvLink" href="https://www.tradingview.com/chart/?symbol=OANDA%3AXAUUSD" target="_blank" style="margin-left:auto">↗ Trade on TradingView</a>
+    </h2>
+    <div id="fxChartWrap"></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--blue)"></span>Economic Calendar (catalysts)</h2>
+    <div class="body" style="overflow:hidden">
+      <div class="tradingview-widget-container" style="height:100%">
+        <div class="tradingview-widget-container__widget" style="height:100%"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-events.js" async>
+        {"colorTheme":"dark","isTransparent":true,"width":"100%","height":"100%","locale":"en","importanceFilter":"0,1","countryFilter":"us,eu,gb,jp,ca"}
+        </script>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--green)"></span>FX Sessions (ET)</h2>
+    <div class="body" id="fxSessBody"></div>
+  </div>
+
+  <div class="panel">
+    <h2><span class="dot" style="background:var(--purple)"></span>AI Trade Plan — <span id="fxPlanSym" style="color:#fff;text-transform:none">pick an instrument</span></h2>
+    <div class="body" id="fxPlanBody"><div class="empty">Click ✨ on any quote row for an AI plan with real prices.<br>P&L for FX trades: log them in the Stocks tab trade log with your $ result.</div></div>
+  </div>
+</div>
+
+<div class="disclaimer">Educational tool — not financial advice. Data may be delayed (free-tier APIs). Verify every setup on your broker before trading. Day trading involves substantial risk of loss.</div>
+
+<div class="overlay" id="statsOverlay">
+  <div class="modal" style="width:640px">
+    <h3>📊 Edge Stats — do the numbers say you have an edge?
+      <select id="statsFilter" onchange="renderStats()" style="float:right;font-size:11px"><option value="paper">Paper</option><option value="real">Live</option><option value="all">All</option></select>
+    </h3>
+    <div id="statsBody"></div>
+    <div class="actions"><button class="cancel" onclick="statsOverlay.style.display='none'">Close</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="settingsOverlay">
+  <div class="modal">
+    <h3>⚙ Settings & API Keys</h3>
+    <label>Alpha Vantage API key (gap scanner + sentiment)</label>
+    <input id="sAV" placeholder="Free key — 25 requests/day">
+    <div class="hint">Get free key at <a href="https://www.alphavantage.co/support/#api-key" target="_blank">alphavantage.co</a>. Used for the Top Gainers scan (1 call per scan).</div>
+    <label>Finnhub API key (quotes + news)</label>
+    <input id="sFH" placeholder="Free key — 60 calls/min">
+    <div class="hint">Get free key at <a href="https://finnhub.io/register" target="_blank">finnhub.io</a>. Used for real-time-ish quotes and the news feed.</div>
+    <label>Twelve Data API key (Gold & Forex quotes)</label>
+    <input id="sTD" placeholder="Free key — 800 credits/day">
+    <div class="hint">Get free key at <a href="https://twelvedata.com/pricing" target="_blank">twelvedata.com</a>. Powers the Gold & Forex tab (5 credits per refresh).</div>
+    <label>Anthropic API key (AI trade plans)</label>
+    <input id="sAN" type="password" placeholder="sk-ant-…">
+    <div class="hint">Used for ✨ AI Trade Plan analysis (Claude Haiku), same as your previous screener.</div>
+    <div class="hint" style="margin-top:14px;padding:8px;background:var(--panel2);border-radius:6px">🔐 <b>Key security:</b> keys are stored only in this device's browser storage and sent only to each provider's official HTTPS API — they never leave the device otherwise, so enter them once per device (Mac + phone). Use free-tier data keys and set a low monthly spend cap on your Anthropic key at console.anthropic.com. Never paste broker passwords anywhere in this app; it never asks for them. Watchlist &amp; trade log are also per-device.</div>
+    <label>Daily goal ($)</label>
+    <input id="sGoal" type="number" value="200">
+    <label>Max daily loss ($) — hard stop</label>
+    <input id="sLoss" type="number" value="100">
+    <label>Account risk per trade ($)</label>
+    <input id="sRisk" type="number" value="50">
+    <label>🤖 Auto-scan — hands-free refresh</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button type="button" id="sAutoBtn" onclick="uiToggleAuto()" style="border-radius:6px;padding:8px 16px;font-weight:800;border:1px solid var(--border)">OFF</button>
+      <input id="sAutoStart" type="time" value="07:00" style="width:auto">
+      <span style="color:var(--dim)">to</span>
+      <input id="sAutoEnd" type="time" value="11:30" style="width:auto">
+      <span style="color:var(--dim);font-size:11px">ET</span>
+      <select id="sAutoInt" style="width:auto">
+        <option value="1">scan every 1 min</option>
+        <option value="3" selected>scan every 3 min</option>
+        <option value="5">scan every 5 min</option>
+        <option value="10">scan every 10 min</option>
+        <option value="15">scan every 15 min</option>
+      </select>
+    </div>
+    <div class="hint">While ON (weekdays, between these ET times, app open on screen): quotes refresh every minute, the scanner re-runs at your chosen interval (Pre-Mkt Gaps before 9:30, watchlist gap re-scan after), and news reloads — alerts fire on their own. Outside the window, or when OFF, nothing runs unless you hit ↻ Scan. Note: phones pause background tabs — keep the app on screen (use ☀ awake) during your trading window.</div>
+    <div class="actions">
+      <button class="cancel" onclick="closeSettings()">Cancel</button>
+      <button class="save" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+/* ============================================================
+   Adeel's Trading Command Center — Ross Cameron style momentum
+   Data: Alpha Vantage (gainers) + Finnhub (quotes/news) + Anthropic (AI plans)
+   All keys stored in localStorage only. No backend.
+   ============================================================ */
+const LS = {
+  get k(){ return JSON.parse(localStorage.getItem('tcc_keys')||'{}') },
+  set k(v){ localStorage.setItem('tcc_keys', JSON.stringify(v)) },
+  get wl(){ return JSON.parse(localStorage.getItem('tcc_wl')||'[]') },
+  set wl(v){ localStorage.setItem('tcc_wl', JSON.stringify(v)) },
+  get log(){ return JSON.parse(localStorage.getItem('tcc_log')||'[]') },
+  set log(v){ localStorage.setItem('tcc_log', JSON.stringify(v)) },
+};
+let quotes = {};   // symbol -> finnhub quote
+let gainers = []; // last scan results
+let chartSym = null;
+
+/* ---------- Security helpers: ALL external strings pass through these ---------- */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"'`]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c])); }
+function safeUrl(u){ u=String(u||''); return /^https?:\/\//i.test(u) ? u : '#'; }
+function cleanSym(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9.\-]/g,'').slice(0,12); }
+
+/* ---------- Market-state helper: is silence expected, or is something broken? ---------- */
+function marketNote(feature){
+  const s=document.getElementById('session').textContent;
+  if(s==='MARKET OPEN') return null;
+  if(s==='PRE-MARKET') return '🕐 Pre-market (4:00–9:30 ET) — '+(feature==='ticks'?'only actively trading symbols print ticks; quiet symbols are normal, not an error.':'data reflects pre-market activity.');
+  if(s==='AFTER HOURS') return '🕐 After-hours — only sporadic trades stream; thin or frozen data is normal, not an error.';
+  return '🕐 US MARKET IS CLOSED — '+(feature==='ticks'?'the live seconds chart streams real trades and can only draw while the market is open (or active pre/post-market). Nothing is broken.':'prices shown are the last session\'s. Live features resume at 4:00 AM ET weekdays.');
+}
+
+/* ---------- Chart panel: TradingView 1-min OR live sub-minute candles ---------- */
+let chartMode = localStorage.getItem('tcc_mode') || 'tv';
+let liveInt = +(localStorage.getItem('tcc_liveint') || 10); // seconds per candle
+let ws=null, wsSym=null, lc=null, lcSeries=null, lcVwapLine=null;
+let lcCandles=new Map(), cumPV=0, cumV=0;
+
+function selectSym(sym){
+  chartSym = sym.toUpperCase();
+  document.getElementById('chartSym').textContent = chartSym;
+  document.getElementById('tvLink').href = 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(chartSym);
+  renderChart();
+}
+function setMode(m){ chartMode=m; localStorage.setItem('tcc_mode',m); renderChart(); }
+function setLiveInt(s){ liveInt=s; localStorage.setItem('tcc_liveint',s); renderChart(); }
+function updateModeBtns(){
+  document.getElementById('mTv').className='tvbtn'+(chartMode==='tv'?' on':'');
+  document.getElementById('mLive').className='tvbtn'+(chartMode==='live'?' on':'');
+}
+function renderChart(){
+  updateModeBtns();
+  if(!chartSym) return;
+  if(chartMode==='tv') buildTV(); else buildLive();
+}
+
+function buildTV(){
+  const wrap = document.getElementById('tvwrap');
+  wrap.innerHTML = '<div id="tv_'+chartSym+'"></div>';
+  if(typeof TradingView === 'undefined'){
+    wrap.innerHTML = '<div class="empty">TradingView widget couldn\'t load (offline?). Use ↗ button instead.</div>';
+    return;
+  }
+  new TradingView.widget({
+    container_id: 'tv_'+chartSym,
+    symbol: chartSym,
+    interval: '1',
+    timezone: 'America/New_York',
+    theme: 'dark',
+    style: '1',
+    locale: 'en',
+    autosize: true,
+    hide_side_toolbar: false,
+    withdateranges: false,
+    allow_symbol_change: true,
+    studies: ['VWAP@tv-basicstudies','MAExp@tv-basicstudies'],
+    toolbar_bg: '#12161f'
+  });
+}
+
+/* Live sub-minute candles: Finnhub trade websocket -> 5s/10s/30s OHLC + session VWAP */
+function buildLive(){
+  const k=LS.k, wrap=document.getElementById('tvwrap');
+  if(!k.fh){ wrap.innerHTML='<div class="empty">⚡ Live seconds chart needs your Finnhub key — add it in ⚙ Settings.</div>'; return; }
+  if(typeof LightweightCharts === 'undefined'){ wrap.innerHTML='<div class="empty">Chart library couldn\'t load (offline?).</div>'; return; }
+  const note = marketNote('ticks');
+  wrap.innerHTML = '<div style="display:flex;gap:4px;padding:4px 8px;align-items:center">'
+    + [5,10,30].map(s=>`<button class="mini ${s===liveInt?'on':''}" onclick="setLiveInt(${s})">${s}s</button>`).join('')
+    + '<span id="lcinfo" style="margin-left:auto;font-size:10px;color:var(--dim)">waiting for trades…</span></div>'
+    + (note ? '<div style="margin:4px 8px;padding:7px 10px;border-radius:6px;background:#3b2f0e;color:var(--amber);font-size:11px;font-weight:600">'+note+'</div>' : '')
+    + '<div id="lc" style="height:calc(100% - '+(note?'70px':'28px')+')"></div>';
+  // reset aggregation state
+  lcCandles=new Map(); cumPV=0; cumV=0;
+  lc = LightweightCharts.createChart(document.getElementById('lc'), {
+    layout:{background:{color:'#12161f'},textColor:'#7a8599'},
+    grid:{vertLines:{color:'#1a2030'},horzLines:{color:'#1a2030'}},
+    timeScale:{timeVisible:true,secondsVisible:true,borderColor:'#232a38'},
+    rightPriceScale:{borderColor:'#232a38'},
+    autoSize:true
+  });
+  lcSeries = lc.addCandlestickSeries({upColor:'#22c55e',downColor:'#ef4444',wickUpColor:'#22c55e',wickDownColor:'#ef4444',borderVisible:false});
+  lcVwapLine = lc.addLineSeries({color:'#f59e0b',lineWidth:1,priceLineVisible:false,lastValueVisible:true,title:'VWAP'});
+  ensureWS();
+}
+function ensureWS(){
+  const k=LS.k;
+  if(ws && ws.readyState===1){ resub(); return; }
+  if(ws) try{ws.close()}catch(e){}
+  ws = new WebSocket('wss://ws.finnhub.io?token='+k.fh);
+  ws.onopen = ()=>{ resub(); const i=document.getElementById('lcinfo'); if(i&&marketNote('ticks')===null) i.textContent='connected — waiting for trades…'; };
+  ws.onmessage = e=>{
+    try{ const m=JSON.parse(e.data); if(m.type==='trade') m.data.forEach(onTick); }catch(err){}
+  };
+  ws.onerror = ()=>{ const i=document.getElementById('lcinfo'); if(i){ i.textContent='⚠ SYSTEM: WebSocket connection failed — check internet or Finnhub key (this is an error, not market hours)'; i.style.color='var(--red)'; } };
+  ws.onclose = ()=>{ if(chartMode==='live') setTimeout(ensureWS, 3000); };
+}
+function resub(){
+  if(!ws || ws.readyState!==1) return;
+  // stream chart symbol + entire watchlist (free tier allows 50 symbols)
+  const want = new Set(LS.wl.map(w=>w.sym)); if(chartSym) want.add(chartSym);
+  for(const s of want) ws.send(JSON.stringify({type:'subscribe',symbol:s}));
+  wsSym = chartSym;
+}
+function onTick(t){
+  noteTick(t.s, t.t);
+  // keep quotes fresh from the stream for alerts/HOD (all subscribed symbols)
+  if(quotes[t.s]){ quotes[t.s].c=t.p; quotes[t.s].h=Math.max(quotes[t.s].h||0,t.p); }
+  if(t.s!==chartSym || !lcSeries || chartMode!=='live') return;
+  const bucket = Math.floor(t.t/1000/liveInt)*liveInt;
+  let c = lcCandles.get(bucket);
+  if(!c){ c={time:bucket,open:t.p,high:t.p,low:t.p,close:t.p}; lcCandles.set(bucket,c); }
+  c.high=Math.max(c.high,t.p); c.low=Math.min(c.low,t.p); c.close=t.p;
+  const v = t.v||0; cumPV += t.p*v; cumV += v;
+  try{
+    lcSeries.update(c);
+    if(cumV>0) lcVwapLine.update({time:bucket, value:cumPV/cumV});
+  }catch(e){}
+  const info=document.getElementById('lcinfo');
+  if(info) info.textContent = `${chartSym} · last $${t.p.toFixed(2)} · VWAP $${cumV?(cumPV/cumV).toFixed(2):'—'} · ${lcCandles.size} bars`;
+  checkAlerts(t.s, t.p, quotes[t.s] ? Math.max(quotes[t.s].h||0, t.p) : null);
+}
+
+/* ---------- Clock & session ---------- */
+function tick(){
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const hh=et.getHours(), mm=et.getMinutes();
+  const t = et.toLocaleTimeString('en-US',{hour12:false});
+  document.getElementById('clock').textContent = t+' ET';
+  const mins = hh*60+mm, day = et.getDay();
+  const s = document.getElementById('session');
+  let cls='closed', txt='CLOSED';
+  if(day>=1&&day<=5){
+    if(mins>=240&&mins<570){cls='pre';txt='PRE-MARKET';}
+    else if(mins>=570&&mins<960){cls='open';txt='MARKET OPEN';}
+    else if(mins>=960&&mins<1200){cls='after';txt='AFTER HOURS';}
+  }
+  s.className='session '+cls; s.textContent=txt;
+}
+setInterval(tick,1000); tick();
+
+/* ---------- Settings ---------- */
+function autoCfg(){ return Object.assign({on:true,start:'07:00',end:'11:30',int:3}, LS.k.auto||{}); }
+let uiAutoOn = true;
+function uiToggleAuto(){ uiAutoOn=!uiAutoOn; paintAutoBtn(); }
+function paintAutoBtn(){
+  const b=document.getElementById('sAutoBtn');
+  if(uiAutoOn){ b.textContent='ON'; b.style.background='#0e3b21'; b.style.color='var(--green)'; b.style.borderColor='#1d6b3f'; }
+  else { b.textContent='OFF'; b.style.background='var(--panel2)'; b.style.color='var(--dim)'; b.style.borderColor='var(--border)'; }
+}
+function openSettings(){
+  const k=LS.k, a=autoCfg();
+  sAV.value=k.av||''; sFH.value=k.fh||''; sAN.value=k.an||''; sTD.value=k.td||'';
+  sGoal.value=k.goal||200; sLoss.value=k.loss||100; sRisk.value=k.risk||50;
+  uiAutoOn=a.on; paintAutoBtn();
+  sAutoStart.value=a.start; sAutoEnd.value=a.end; sAutoInt.value=String(a.int);
+  settingsOverlay.style.display='flex';
+}
+function closeSettings(){ settingsOverlay.style.display='none'; }
+function saveSettings(){
+  LS.k={av:sAV.value.trim(), fh:sFH.value.trim(), an:sAN.value.trim(), td:sTD.value.trim(),
+        goal:+sGoal.value||200, loss:+sLoss.value||100, risk:+sRisk.value||50,
+        auto:{on:uiAutoOn, start:sAutoStart.value||'07:00', end:sAutoEnd.value||'11:30', int:+sAutoInt.value||3}};
+  closeSettings(); renderPnl(); paintAutoBadge();
+  setStatus('Settings saved ✓'+(uiAutoOn?' — auto-scan armed':''));
+}
+function setStatus(msg, spin){
+  document.getElementById('status').innerHTML = (spin?'<span class="spin"></span> ':'')+msg;
+  if(!spin) setTimeout(()=>{document.getElementById('status').textContent=''},4000);
+}
+
+/* ---------- Gap / Top Gainers scanner (Alpha Vantage) ---------- */
+async function scanGainers(){
+  const k=LS.k;
+  if(!k.av){ setStatus('⚠ Add your Alpha Vantage key in Settings'); return; }
+  setStatus('Scanning top gainers…', true);
+  try{
+    const r = await fetch(`https://www.alphavantage.co/query?function=TOP_GAINERS_LOSERS&apikey=${k.av}`);
+    const j = await r.json();
+    if(!j.top_gainers){ setStatus('⚠ Alpha Vantage limit hit or bad key — try again later'); return; }
+    gainers = j.top_gainers.map(g=>({
+      sym:cleanSym(g.ticker), px:+g.price, chg:parseFloat(g.change_percentage), vol:+g.volume
+    })).filter(g=>isFinite(g.px));
+    // cache universe of movers for the pre-market gap scan (tomorrow morning's watch universe)
+    const uni = [...new Set([...(JSON.parse(localStorage.getItem('tcc_universe')||'[]')), ...gainers.slice(0,40).map(g=>g.sym)])].slice(-60);
+    localStorage.setItem('tcc_universe', JSON.stringify(uni));
+    renderGainers();
+    setStatus(`Scan complete — ${gainers.length} gainers`);
+  }catch(e){ setStatus('⚠ Scan failed: '+e.message); }
+}
+function pillarScore(g){
+  // Ross Cameron's 5 pillars (real float when cached, proxy otherwise)
+  const fl=floats[g.sym];
+  return {
+    price: g.px>=1 && g.px<=20,          // 1. $1–$20 sweet spot
+    move:  g.chg>=10,                     // 2. Already up 10%+
+    vol:   g.vol>=1e6,                    // 3. Heavy volume (proxy for 5x rel-vol)
+    float: (fl!==undefined&&fl!==null) ? fl<20 : (g.px<=20 && g.vol/Math.max(g.px,0.5)>3e5), // 4. Low float (<20M real, else churn proxy)
+    news:  null                            // 5. Catalyst — check news panel / AI
+  };
+}
+function renderGainers(){
+  const tb=document.getElementById('gapBody');
+  document.getElementById('gapCount').textContent=gainers.length;
+  if(!gainers.length){ tb.innerHTML='<div class="empty">No gainers returned.</div>'; return; }
+  // sort: pillar hits desc, then % change
+  const rows = gainers.map(g=>({g,p:pillarScore(g)}))
+    .map(x=>({...x, score:[x.p.price,x.p.move,x.p.vol,x.p.float].filter(Boolean).length}))
+    .sort((a,b)=>b.score-a.score||b.g.chg-a.g.chg);
+  tb.innerHTML = `<table><thead><tr><th>Ticker</th><th>Price</th><th>% Chg</th><th>Volume</th><th>Float</th><th>Pillars</th><th></th></tr></thead><tbody>`+
+    rows.map(({g,p,score})=>`<tr class="row" onclick="selectSym('${g.sym}')">
+      <td class="tk">${g.sym}${score>=4?' ⭐':''}</td>
+      <td>$${g.px.toFixed(2)}</td>
+      <td class="${g.chg>=0?'up':'dn'}">${g.chg>=0?'+':''}${g.chg.toFixed(1)}%</td>
+      <td>${fmtVol(g.vol)}</td>
+      <td class="${floats[g.sym]!=null&&floats[g.sym]<20?'up':''}">${fmtFloat(g.sym)}</td>
+      <td><span class="pillars" title="price / +10% / volume / float">${[p.price,p.move,p.vol,p.float].map(x=>`<span class="pill ${x?'on':''}"></span>`).join('')}<span class="pill" style="background:#2a3243" title="news: check feed"></span></span></td>
+      <td><button class="addbtn" onclick="event.stopPropagation();addTicker('${g.sym}')">+ watch</button></td>
+    </tr>`).join('')+'</tbody></table>';
+  fetchFloatsFor(rows.slice(0,15).map(x=>x.g.sym)).then(ch=>{ if(ch) renderGainers(); });
+}
+function fmtVol(v){ return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(0)+'K':v; }
+
+/* ---------- Pre-market gap scanner (Finnhub quotes vs prev close) ---------- */
+let scanMode = 'av';
+let pmGaps = [];
+function setScanMode(m){
+  scanMode = m;
+  document.getElementById('scanModeAV').className = 'mini'+(m==='av'?' on':'');
+  document.getElementById('scanModePM').className = 'mini'+(m==='pm'?' on':'');
+  if(m==='pm') scanPremarket(); else renderGainers();
+}
+async function scanPremarket(){
+  const k=LS.k;
+  if(!k.fh){ setStatus('⚠ Pre-market scan needs your Finnhub key'); return; }
+  const uni = [...new Set([
+    ...JSON.parse(localStorage.getItem('tcc_universe')||'[]'),
+    ...LS.wl.map(w=>w.sym)
+  ])].slice(0,50); // stay under 60 calls/min
+  if(!uni.length){ document.getElementById('gapBody').innerHTML='<div class="empty">No universe yet.<br>Run a Top Gainers scan once (it caches yesterday\'s movers), or add tickers to your watchlist — then Pre-Mkt Gaps knows what to check at 7am.</div>'; return; }
+  const sess=document.getElementById('session').textContent;
+  if(sess!=='PRE-MARKET') setStatus('🕐 Note: it\'s not pre-market right now (4:00–9:30 ET weekdays) — gaps shown compare last price vs previous close.');
+  setStatus('Scanning '+uni.length+' names for pre-market gaps…', true);
+  const out=[];
+  await Promise.all(uni.map(async sym=>{
+    try{
+      const r=await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${k.fh}`);
+      const q=await r.json();
+      if(q && q.c>0 && q.pc>0){
+        out.push({sym, px:q.c, pc:q.pc, gap:(q.c-q.pc)/q.pc*100});
+        quotes[sym]=q;
+      }
+    }catch(e){}
+  }));
+  pmGaps = out.filter(g=>Math.abs(g.gap)>=1).sort((a,b)=>b.gap-a.gap);
+  renderPremarket();
+  checkAlertsAll();
+  setStatus('Pre-market scan done — '+pmGaps.length+' gapping ≥1%');
+}
+function renderPremarket(){
+  const tb=document.getElementById('gapBody');
+  document.getElementById('gapCount').textContent=pmGaps.length;
+  if(!pmGaps.length){ tb.innerHTML='<div class="empty">Nothing gapping ≥1% in the cached universe right now.</div>'; return; }
+  tb.innerHTML = `<table><thead><tr><th>Ticker</th><th>Pre-Mkt</th><th>Prev Close</th><th>Gap %</th><th></th></tr></thead><tbody>`+
+    pmGaps.map(g=>`<tr class="row" onclick="selectSym('${g.sym}')">
+      <td class="tk">${g.sym}${g.gap>=10 && g.px>=1 && g.px<=20?' ⭐':''}</td>
+      <td>$${g.px.toFixed(2)}</td>
+      <td>$${g.pc.toFixed(2)}</td>
+      <td class="${g.gap>=0?'up':'dn'}">${g.gap>=0?'+':''}${g.gap.toFixed(1)}%</td>
+      <td><button class="addbtn" onclick="event.stopPropagation();addTicker('${g.sym}')">+ watch</button></td>
+    </tr>`).join('')+'</tbody></table>';
+}
+
+/* ---------- Alerts: entry-cross & HOD proximity (sound + notification) ---------- */
+const alerted = {}; // sym -> {entry:true, hod:true}
+function beep(freq=880, dur=0.25, n=2){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    for(let i=0;i<n;i++){
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value=freq; g.gain.setValueAtTime(0.15, ctx.currentTime+i*0.35);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+i*0.35+dur);
+      o.start(ctx.currentTime+i*0.35); o.stop(ctx.currentTime+i*0.35+dur);
+    }
+  }catch(e){}
+}
+function notify(title, body){
+  beep();
+  setStatus('🔔 '+title);
+  if('Notification' in window){
+    if(Notification.permission==='granted') new Notification(title,{body});
+    else if(Notification.permission!=='denied') Notification.requestPermission();
+  }
+}
+function parsePx(s){ const m=String(s||'').match(/[\d.]+/); return m?+m[0]:null; }
+function checkAlerts(sym, price, dayHigh){
+  const w = LS.wl.find(x=>x.sym===sym);
+  alerted[sym] = alerted[sym]||{};
+  // entry-cross: price reaches AI plan entry
+  if(w && w.plan && !alerted[sym].entry){
+    const entry = parsePx(w.plan.entry);
+    if(entry && price>=entry && price<=entry*1.03){
+      alerted[sym].entry=true;
+      notify(`${sym} at entry zone $${entry.toFixed(2)}`, `Last $${price.toFixed(2)} — review plan, trade on TradingView`);
+    }
+  }
+  // HOD proximity
+  if(dayHigh && !alerted[sym].hod && dayHigh>0 && (dayHigh-price)/dayHigh<=0.02 && price>0){
+    alerted[sym].hod=true;
+    notify(`${sym} 🔥 near high of day`, `Last $${price.toFixed(2)} vs HOD $${dayHigh.toFixed(2)}`);
+  }
+}
+function checkAlertsAll(){
+  for(const w of LS.wl){ const q=quotes[w.sym]; if(q&&q.c) checkAlerts(w.sym,q.c,q.h); }
+}
+
+/* ---------- Watchlist & quotes (Finnhub) ---------- */
+function addTickerFromInput(){
+  const v=document.getElementById('wlInput').value.trim().toUpperCase();
+  if(v){ addTicker(v); document.getElementById('wlInput').value=''; }
+}
+function addTicker(sym){
+  sym=sym.toUpperCase().replace(/[^A-Z.\-]/g,'');
+  if(!sym) return;
+  const wl=LS.wl;
+  if(wl.find(w=>w.sym===sym)){ setStatus(sym+' already on watchlist'); return; }
+  if(wl.length>=12){ setStatus('⚠ Watchlist full (12 max) — stay focused like Ross: 2-3 A+ setups'); return; }
+  wl.push({sym, plan:null});
+  LS.wl=wl; renderWatchlist(); refreshQuotes(); selectSym(sym);
+  fetchFloat(sym);
+  if(ws && ws.readyState===1) resub();
+}
+function rmTicker(sym){
+  LS.wl = LS.wl.filter(w=>w.sym!==sym);
+  delete quotes[sym];
+  renderWatchlist(); renderHOD();
+}
+async function refreshQuotes(){
+  const k=LS.k, wl=LS.wl;
+  if(!k.fh){ if(wl.length) setStatus('⚠ Add your Finnhub key for live quotes'); return; }
+  if(!wl.length) return;
+  setStatus('Updating quotes…', true);
+  await Promise.all(wl.map(async w=>{
+    try{
+      const r=await fetch(`https://finnhub.io/api/v1/quote?symbol=${w.sym}&token=${k.fh}`);
+      const q=await r.json();
+      if(q && q.c) quotes[w.sym]=q; // {c,d,dp,h,l,o,pc}
+    }catch(e){}
+  }));
+  renderHOD(); renderWatchlist();
+  checkAlertsAll();
+  const mn = marketNote('quotes');
+  setStatus('Quotes updated ✓'+(mn?' — '+mn:''));
+}
+const prevPx = {};
+function renderHOD(){
+  const wl=LS.wl, el=document.getElementById('hodBody');
+  const rows = wl.filter(w=>quotes[w.sym]);
+  if(!rows.length){ el.innerHTML='<div class="empty">No quotes yet — add tickers and hit ↻ quotes.</div>'; return; }
+  const sorted=[...rows].sort((a,b)=>(quotes[b.sym].dp||0)-(quotes[a.sym].dp||0));
+  el.innerHTML=`<table><thead><tr><th>Ticker</th><th>Last</th><th>% Day</th><th>HOD</th><th>Off HOD</th><th>VWAP zone</th></tr></thead><tbody>`+
+    sorted.map(w=>{
+      const q=quotes[w.sym];
+      const offHod = q.h? ((q.h-q.c)/q.h*100) : null;
+      const nearHod = offHod!==null && offHod<=2;
+      const mid=(q.h+q.l)/2;
+      const zone = q.c>=mid ? 'upper ½' : 'lower ½';
+      const fl = prevPx[w.sym]!==undefined && q.c!==prevPx[w.sym] ? (q.c>prevPx[w.sym]?' fup':' fdn') : '';
+      prevPx[w.sym]=q.c;
+      return `<tr class="row" onclick="selectSym('${w.sym}')">
+        <td class="tk">${w.sym} ${halted[w.sym]?'<span class="hodflag" style="background:#3b0e0e;color:#ff8a8a">⚠ HALT?</span>':nearHod?'<span class="hodflag">🔥 HOD</span>':''}</td>
+        <td class="${fl}">$${q.c.toFixed(2)}</td>
+        <td class="${q.dp>=0?'up':'dn'}">${q.dp>=0?'+':''}${(q.dp||0).toFixed(1)}%</td>
+        <td>$${q.h.toFixed(2)}</td>
+        <td>${offHod===null?'—':offHod.toFixed(1)+'%'}</td>
+        <td class="${q.c>=mid?'up':'dn'}">${zone}</td>
+      </tr>`;
+    }).join('')+'</tbody></table>';
+}
+
+/* ---------- Watchlist trade-plan cards ---------- */
+function renderWatchlist(){
+  const wl=LS.wl, el=document.getElementById('wlBody');
+  if(!wl.length){ el.innerHTML='<div class="empty">No tickers yet. Add from scanner or type a symbol above.</div>'; return; }
+  el.innerHTML = wl.map(w=>{
+    const q=quotes[w.sym];
+    const p=w.plan;
+    const pos = q&&q.h>q.l ? Math.min(98,Math.max(0,(q.c-q.l)/(q.h-q.l)*100)) : null;
+    return `<div class="card">
+      <div class="top"><span class="tk" style="cursor:pointer" title="Load chart" onclick="selectSym('${w.sym}')">${w.sym} 📈</span>
+        ${q?`<span class="px ${q.dp>=0?'up':'dn'}">$${q.c.toFixed(2)} (${q.dp>=0?'+':''}${(q.dp||0).toFixed(1)}%)</span>`:'<span class="px" style="color:var(--dim)">no quote</span>'}
+        <button class="x" onclick="rmTicker('${w.sym}')">✕</button></div>
+      ${pos!==null?`<div class="rangebar"><div class="pos" style="left:${pos}%"></div></div>
+      <div class="rangelabels"><span>LOD $${q.l.toFixed(2)}</span><span>day range</span><span>HOD $${q.h.toFixed(2)}</span></div>`:''}
+      ${p?`<div class="levels">
+        <div class="lv"><div class="l">Entry</div><div class="v" style="color:var(--blue)">${esc(p.entry)}</div></div>
+        <div class="lv"><div class="l">Stop</div><div class="v" style="color:var(--red)">${esc(p.stop)}</div></div>
+        <div class="lv"><div class="l">Target</div><div class="v" style="color:var(--green)">${esc(p.target)}</div></div>
+      </div>
+      <div class="levels"><div class="lv"><div class="l">Setup</div><div class="v">${esc(p.setup)||'—'}</div></div>
+        <div class="lv"><div class="l">R:R</div><div class="v">${esc(p.rr)||'—'}</div></div>
+        <div class="lv"><div class="l">Shares @ risk</div><div class="v">${esc(p.shares)||'—'}</div></div></div>
+      <div class="why">${esc(p.why)}</div>`:''}
+      <div style="display:flex;gap:6px">
+        <button class="aibtn" onclick="aiPlan('${w.sym}')">✨ AI Trade Plan</button>
+        <a class="aibtn" style="text-align:center;text-decoration:none;background:#123c66;border-color:#1d5a94;color:#7cb8f0" href="https://www.tradingview.com/chart/?symbol=${w.sym}" target="_blank">↗ Trade</a>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ---------- AI trade plan (Anthropic — Claude Haiku) ---------- */
+async function aiPlan(sym){
+  const k=LS.k;
+  if(!k.an){ setStatus('⚠ Add your Anthropic key in Settings'); openSettings(); return; }
+  const q=quotes[sym];
+  if(!q){ setStatus('⚠ Get a quote first (↻ quotes) so the AI uses real prices'); return; }
+  setStatus('AI analyzing '+sym+'…', true);
+  const news = (newsCache[sym]||[]).slice(0,3).map(n=>'- '+n.headline).join('\n') || 'No cached headlines.';
+  const prompt = `You are a disciplined momentum day-trading assistant using Ross Cameron's (Warrior Trading) methodology: bull flags, micro pullbacks, first candle to make a new high, VWAP support, 2:1 minimum reward:risk.
+
+REAL market data for ${sym} right now:
+- Last: $${q.c.toFixed(2)}, Open: $${q.o.toFixed(2)}, Prev close: $${q.pc.toFixed(2)}
+- Day high: $${q.h.toFixed(2)}, Day low: $${q.l.toFixed(2)}, Day change: ${(q.dp||0).toFixed(1)}%
+Recent headlines:
+${news}
+Trader risk budget per trade: $${k.risk||50}.
+
+Using ONLY these real numbers (never invent prices outside today's range context), respond with pure JSON, no markdown:
+{"entry":"$X.XX area","stop":"$X.XX","target":"$X.XX","setup":"name of setup","rr":"X.X:1","shares":"N shares","why":"2-3 sentences: the setup, where it sits in the day range, what invalidates it, and whether it's an A/B/C quality setup"}`;
+  try{
+    const r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':k.an,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5',max_tokens:500,
+        messages:[{role:'user',content:prompt}]})
+    });
+    const j=await r.json();
+    if(j.error) throw new Error(j.error.message);
+    const txt=j.content[0].text.replace(/```json|```/g,'').trim();
+    const plan=JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}')+1));
+    const wl=LS.wl; const w=wl.find(x=>x.sym===sym);
+    if(w){ w.plan=plan; LS.wl=wl; }
+    renderWatchlist();
+    setStatus(sym+' plan ready ✓');
+  }catch(e){ setStatus('⚠ AI failed: '+e.message); }
+}
+
+/* ---------- News (Finnhub) ---------- */
+let newsCache = {}; // sym -> articles
+async function loadNews(){
+  const k=LS.k;
+  if(!k.fh){ setStatus('⚠ Add your Finnhub key for news'); return; }
+  setStatus('Loading news…', true);
+  const el=document.getElementById('newsBody');
+  let items=[];
+  try{
+    // watchlist company news (today) first — that's the catalyst check
+    const today=new Date().toISOString().slice(0,10);
+    const yest=new Date(Date.now()-86400e3).toISOString().slice(0,10);
+    for(const w of LS.wl.slice(0,8)){
+      try{
+        const r=await fetch(`https://finnhub.io/api/v1/company-news?symbol=${w.sym}&from=${yest}&to=${today}&token=${k.fh}`);
+        const arr=await r.json();
+        if(Array.isArray(arr)){ newsCache[w.sym]=arr; arr.slice(0,4).forEach(a=>items.push({...a,tick:w.sym})); }
+      }catch(e){}
+    }
+    // general market news
+    const r=await fetch(`https://finnhub.io/api/v1/news?category=general&token=${k.fh}`);
+    const gen=await r.json();
+    if(Array.isArray(gen)) gen.slice(0,15).forEach(a=>items.push(a));
+    items.sort((a,b)=>b.datetime-a.datetime);
+    el.innerHTML = items.length? items.map(a=>`<div class="news-item">
+      <div class="meta">${a.tick?`<span class="tick">${esc(a.tick)}</span>`:''}<span class="src">${esc(a.source)}</span><span>${new Date(a.datetime*1000).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}</span></div>
+      <a href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener noreferrer">${esc(a.headline)}</a></div>`).join('')
+      : '<div class="empty">No news returned.</div>';
+    setStatus('News loaded ✓');
+  }catch(e){ setStatus('⚠ News failed: '+e.message); }
+}
+
+/* ---------- Brokers, paper/live mode, commissions ---------- */
+let broker = localStorage.getItem('tcc_broker')||'IB';
+let tradeMode = localStorage.getItem('tcc_trademode')||'paper';
+function setBroker(b){ broker=b; localStorage.setItem('tcc_broker',b); renderLog(); }
+function toggleTradeMode(){
+  tradeMode = tradeMode==='paper' ? 'real' : 'paper';
+  localStorage.setItem('tcc_trademode', tradeMode);
+  updateModeUI(); renderLog(); renderPnl();
+}
+function updateModeUI(){
+  const b=document.getElementById('modeToggle');
+  if(tradeMode==='paper'){ b.textContent='PAPER'; b.style.background='#3b2f0e'; b.style.color='var(--amber)'; }
+  else { b.textContent='LIVE $'; b.style.background='#3b0e0e'; b.style.color='#ff8a8a'; }
+  document.getElementById('pnlMode').textContent = tradeMode==='paper'?'(paper)':'(live)';
+  document.getElementById('brokerSel').value = broker;
+}
+function commission(brk, qty, px){
+  // one side. IBKR Pro fixed: $0.005/sh, min $1, max 1% of trade value. Questrade: $0.01/sh, min $4.95, max $9.95.
+  if(brk==='IB'){ const c=Math.max(qty*0.005,1); return Math.min(c, Math.max(qty*px*0.01, 0.35)); }
+  return Math.min(Math.max(qty*0.01,4.95),9.95);
+}
+
+/* ---------- Trade log & P&L discipline ---------- */
+function logTrade(){
+  const sym=tSym.value.trim().toUpperCase(), qty=+tQty.value, pin=+tIn.value, pout=+tOut.value, side=tSide.value;
+  if(!sym||!qty||!pin||!pout){ setStatus('⚠ Fill ticker, shares, entry, exit'); return; }
+  const pnl = side==='L' ? (pout-pin)*qty : (pin-pout)*qty;
+  const comm = commission(broker,qty,pin)+commission(broker,qty,pout);
+  const log=LS.log;
+  log.push({d:new Date().toISOString(), sym, qty, pin, pout, side, pnl,
+            comm:+comm.toFixed(2), net:+(pnl-comm).toFixed(2),
+            broker, mode:tradeMode, setup:document.getElementById('tSetup').value});
+  LS.log=log;
+  tSym.value=tQty.value=tIn.value=tOut.value='';
+  renderLog(); renderPnl();
+}
+function tNet(t){ return t.net!==undefined ? t.net : t.pnl; }
+function tMode(t){ return t.mode||'real'; }
+function delTrade(i){
+  const log=LS.log; log.splice(i,1); LS.log=log; renderLog(); renderPnl();
+}
+function todayTrades(){
+  const t=new Date().toDateString();
+  return LS.log.map((x,i)=>({...x,i})).filter(x=>new Date(x.d).toDateString()===t);
+}
+function renderLog(){
+  const rows=todayTrades().filter(x=>tMode(x)===tradeMode).reverse();
+  document.getElementById('logCount').textContent=rows.length;
+  const el=document.getElementById('logBody');
+  if(!rows.length){ el.innerHTML='<div class="empty">No '+tradeMode+' trades logged today.<br>Log every trade — the journal is the system.</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Time</th><th>Ticker</th><th>Setup</th><th>Sh</th><th>Gross</th><th>Fees</th><th>Net</th><th>R</th><th></th></tr></thead><tbody>`+
+    rows.map(x=>{
+      const net=tNet(x);
+      const R = (LS.k.risk||50) ? (net/(LS.k.risk||50)).toFixed(1) : '—';
+      return `<tr><td>${new Date(x.d).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}</td>
+      <td class="tk">${x.sym}</td><td style="color:var(--dim)">${x.setup||'—'}</td><td>${x.qty}</td>
+      <td class="${x.pnl>=0?'up':'dn'}">${x.pnl>=0?'+':''}$${x.pnl.toFixed(2)}</td>
+      <td style="color:var(--dim)">${x.comm!==undefined?'-$'+x.comm.toFixed(2):'—'}</td>
+      <td class="${net>=0?'up':'dn'}" style="font-weight:700">${net>=0?'+':''}$${net.toFixed(2)}</td>
+      <td class="${net>=0?'up':'dn'}">${R}R</td>
+      <td><button class="dellog" onclick="delTrade(${x.i})">✕</button></td></tr>`;
+    }).join('')+'</tbody></table>';
+}
+function renderPnl(){
+  const k=LS.k, goal=k.goal||200, maxLoss=k.loss||100;
+  const pnl=todayTrades().filter(x=>tMode(x)===tradeMode).reduce((s,x)=>s+tNet(x),0);
+  checkCooldown();
+  const v=document.getElementById('pnlVal');
+  const newTxt=(pnl>=0?'+$':'-$')+Math.abs(pnl).toFixed(0);
+  if(v.textContent!==newTxt){ v.classList.remove('pop'); void v.offsetWidth; v.classList.add('pop'); }
+  v.textContent=newTxt;
+  v.style.color=pnl>=0?'var(--green)':'var(--red)';
+  document.getElementById('goalLbl').textContent='$'+goal;
+  document.getElementById('lossLbl').textContent='$'+maxLoss;
+  document.getElementById('goalMeter').style.width=Math.min(100,Math.max(0,pnl/goal*100))+'%';
+  document.getElementById('lossMeter').style.width=Math.min(100,Math.max(0,-pnl/maxLoss*100))+'%';
+  document.getElementById('maxLossBanner').style.display = pnl<=-maxLoss?'block':'none';
+  document.getElementById('goalBanner').style.display = pnl>=goal?'block':'none';
+}
+
+/* ---------- Edge Stats (the panel that decides if this makes money) ---------- */
+function openStats(){ document.getElementById('statsFilter').value=tradeMode==='paper'?'paper':'real'; renderStats(); statsOverlay.style.display='flex'; }
+function statLine(rows){
+  const n=rows.length; if(!n) return null;
+  const wins=rows.filter(t=>tNet(t)>0), losses=rows.filter(t=>tNet(t)<=0);
+  const wr=wins.length/n*100;
+  const aw=wins.length?wins.reduce((s,t)=>s+tNet(t),0)/wins.length:0;
+  const al=losses.length?losses.reduce((s,t)=>s+tNet(t),0)/losses.length:0;
+  const exp=rows.reduce((s,t)=>s+tNet(t),0)/n;
+  const tot=rows.reduce((s,t)=>s+tNet(t),0);
+  const fees=rows.reduce((s,t)=>s+(t.comm||0),0);
+  return {n,wr,aw,al,exp,tot,fees};
+}
+function renderStats(){
+  const f=document.getElementById('statsFilter').value;
+  const rows=LS.log.filter(t=>f==='all'||tMode(t)===f);
+  const el=document.getElementById('statsBody');
+  const s=statLine(rows);
+  if(!s){ el.innerHTML='<div class="empty">No '+f+' trades yet. The stats need ~50 trades to mean anything.</div>'; return; }
+  const c=v=>`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}$${v.toFixed(2)}</span>`;
+  let html=`<table style="margin-bottom:12px"><thead><tr><th>Trades</th><th>Win %</th><th>Avg Win</th><th>Avg Loss</th><th>Expectancy/trade</th><th>Total Net</th><th>Fees Paid</th></tr></thead>
+  <tbody><tr><td>${s.n}</td><td class="${s.wr>=50?'up':'dn'}">${s.wr.toFixed(0)}%</td><td>${c(s.aw)}</td><td>${c(s.al)}</td><td style="font-weight:700">${c(s.exp)}</td><td style="font-weight:700">${c(s.tot)}</td><td class="dn">$${s.fees.toFixed(2)}</td></tr></tbody></table>`;
+  // graduation gate (paper only)
+  if(f==='paper'){
+    const pass = s.n>=50 && s.exp>0 && s.wr>=50;
+    html += `<div class="prime" style="${pass?'':'background:var(--panel2);color:var(--dim)'};margin:0 0 12px">
+      ${pass?'✅ GRADUATION GATE PASSED — the paper stats support going live (start small).':'🎓 Graduation gate: '+s.n+'/50 trades · win rate '+s.wr.toFixed(0)+'%/50% · expectancy '+(s.exp>0?'positive ✓':'negative ✗')+' — stay on paper until all three pass.'}</div>`;
+  }
+  // breakdowns
+  const dims=[
+    ['By setup', t=>t.setup||'—'],
+    ['By hour (ET)', t=>{const et=new Date(new Date(t.d).toLocaleString('en-US',{timeZone:'America/New_York'}));return et.getHours()+':00';}],
+    ['By broker', t=>t.broker==='QT'?'Questrade':t.broker==='IB'?'IBKR':'—'],
+  ];
+  for(const [title,keyFn] of dims){
+    const groups={};
+    rows.forEach(t=>{const k=keyFn(t);(groups[k]=groups[k]||[]).push(t);});
+    const keys=Object.keys(groups).sort((a,b)=>statLine(groups[b]).tot-statLine(groups[a]).tot);
+    html+=`<div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">${title}</div>
+    <table><thead><tr><th>Group</th><th>Trades</th><th>Win %</th><th>Net</th><th>Expectancy</th></tr></thead><tbody>`+
+      keys.map(k=>{const g=statLine(groups[k]);return `<tr><td>${k}</td><td>${g.n}</td><td class="${g.wr>=50?'up':'dn'}">${g.wr.toFixed(0)}%</td><td>${c(g.tot)}</td><td>${c(g.exp)}</td></tr>`;}).join('')+'</tbody></table>';
+  }
+  html+='<div class="hint" style="margin-top:10px">Read it like this: a group with negative expectancy after 20+ trades is a leak — cut it from the playbook. Positive expectancy groups are your real edge; size those.</div>';
+  el.innerHTML=html;
+}
+
+/* ---------- Consecutive-loss cooldown ---------- */
+function checkCooldown(){
+  const rows=todayTrades().filter(x=>tMode(x)===tradeMode);
+  let streak=0;
+  for(let i=rows.length-1;i>=0;i--){ if(tNet(rows[i])<0) streak++; else break; }
+  const el=document.getElementById('cooldownBanner');
+  if(streak>=3){
+    const lastLoss=new Date(rows[rows.length-1].d).getTime();
+    const end=lastLoss+15*60000, left=end-Date.now();
+    if(left>0){
+      el.style.display='block';
+      el.textContent=`⏸ ${streak} LOSSES IN A ROW — COOLDOWN: step away for ${Math.ceil(left/60000)} more min. Revenge trading is how red days become account-killers.`;
+      return;
+    }
+  }
+  el.style.display='none';
+}
+setInterval(checkCooldown, 30000);
+
+/* ---------- Float data (Finnhub shares outstanding, cached) ---------- */
+const floats = JSON.parse(localStorage.getItem('tcc_float')||'{}');
+async function fetchFloat(sym){
+  if(floats[sym]!==undefined || !LS.k.fh) return;
+  try{
+    const r=await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${sym}&token=${LS.k.fh}`);
+    const p=await r.json();
+    floats[sym]= (p && p.shareOutstanding) ? +p.shareOutstanding : null; // millions
+    localStorage.setItem('tcc_float', JSON.stringify(floats));
+  }catch(e){}
+}
+async function fetchFloatsFor(syms){
+  const missing=syms.filter(s=>floats[s]===undefined).slice(0,15);
+  if(!missing.length) return false;
+  await Promise.all(missing.map(fetchFloat));
+  return true;
+}
+function fmtFloat(sym){
+  const f=floats[sym];
+  if(f===undefined) return '…';
+  if(f===null) return '—';
+  return f<1000 ? f.toFixed(1)+'M' : (f/1000).toFixed(1)+'B';
+}
+
+/* ---------- Halt heuristic (tick stream goes silent) ---------- */
+const lastTick={}, tickHist={}, halted={};
+function noteTick(sym, tms){
+  lastTick[sym]=Date.now();
+  (tickHist[sym]=tickHist[sym]||[]).push(Date.now());
+  if(tickHist[sym].length>12) tickHist[sym].shift();
+  if(halted[sym]){ delete halted[sym]; renderHOD(); }
+}
+setInterval(()=>{
+  const sess=document.getElementById('session').textContent;
+  if(sess!=='MARKET OPEN') return;
+  let changed=false;
+  for(const sym of Object.keys(lastTick)){
+    const h=tickHist[sym]||[];
+    const wasActive = h.length>=10 && (h[h.length-1]-h[0])/(h.length-1) < 5000; // avg <5s between ticks
+    const silent = Date.now()-lastTick[sym] > 90000;
+    const flag = wasActive && silent;
+    if(flag && !halted[sym]){ halted[sym]=true; changed=true; notify(sym+' ⚠ possible HALT','Tick stream went silent — verify before trading'); }
+  }
+  if(changed) renderHOD();
+}, 15000);
+
+/* ============================================================
+   PHASE 2 — Gold & Forex tab (Twelve Data + TradingView)
+   ============================================================ */
+const FX = [
+  {td:'XAU/USD', tv:'OANDA:XAUUSD', name:'Gold',    dec:2},
+  {td:'EUR/USD', tv:'FX:EURUSD',    name:'EUR/USD', dec:5},
+  {td:'GBP/USD', tv:'FX:GBPUSD',    name:'GBP/USD', dec:5},
+  {td:'USD/JPY', tv:'FX:USDJPY',    name:'USD/JPY', dec:3},
+  {td:'USD/CAD', tv:'FX:USDCAD',    name:'USD/CAD', dec:5},
+];
+let fxQuotes = {};   // td symbol -> quote
+let fxSel = FX[0];
+let curTab = 'stocks';
+
+function switchTab(t){
+  curTab = t;
+  document.getElementById('tabStocks').className='tab'+(t==='stocks'?' active':'');
+  document.getElementById('tabFx').className='tab'+(t==='fx'?' active':'');
+  const lay = window.matchMedia('(max-width:900px)').matches ? 'flex' : 'grid';
+  document.getElementById('grid').style.display = t==='stocks'?lay:'none';
+  document.getElementById('gridFx').style.display = t==='fx'?lay:'none';
+  if(t==='fx'){
+    renderFxSessions();
+    if(!document.getElementById('fxChartWrap').hasChildNodes()) fxChart(fxSel);
+    if(LS.k.td && !Object.keys(fxQuotes).length) fxRefresh();
+  }
+}
+
+function fxChart(inst){
+  fxSel = inst;
+  document.getElementById('fxChartSym').textContent = inst.name;
+  document.getElementById('fxTvLink').href = 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(inst.tv);
+  const wrap = document.getElementById('fxChartWrap');
+  wrap.innerHTML = '<div id="fxtv_'+inst.name.replace(/\W/g,'')+'"></div>';
+  if(typeof TradingView === 'undefined'){ wrap.innerHTML='<div class="empty">TradingView widget couldn\'t load.</div>'; return; }
+  new TradingView.widget({
+    container_id: 'fxtv_'+inst.name.replace(/\W/g,''),
+    symbol: inst.tv, interval:'5', timezone:'America/New_York', theme:'dark', style:'1',
+    locale:'en', autosize:true, hide_side_toolbar:false, allow_symbol_change:true,
+    studies:['MAExp@tv-basicstudies'], toolbar_bg:'#12161f'
+  });
+}
+
+async function fxRefresh(){
+  const k=LS.k;
+  if(!k.td){ setStatus('⚠ Add your Twelve Data key in ⚙ Settings'); openSettings(); return; }
+  setStatus('Updating Gold & FX…', true);
+  try{
+    const syms = FX.map(f=>f.td).join(',');
+    const r = await fetch('https://api.twelvedata.com/quote?symbol='+encodeURIComponent(syms)+'&apikey='+k.td);
+    const j = await r.json();
+    // multi-symbol responses come keyed by symbol; single come flat
+    FX.forEach(f=>{
+      const q = j[f.td] || (j.symbol===f.td ? j : null);
+      if(q && q.close && !q.code) fxQuotes[f.td]=q;
+    });
+    if(j.code && j.message) throw new Error(j.message);
+    renderFxQuotes();
+    setStatus('Gold & FX updated ✓');
+  }catch(e){ setStatus('⚠ FX quotes failed: '+e.message); }
+}
+function renderFxQuotes(){
+  const el=document.getElementById('fxQuotesBody');
+  const rows = FX.filter(f=>fxQuotes[f.td]);
+  if(!rows.length){ el.innerHTML='<div class="empty">No FX quotes yet — check your Twelve Data key.</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>Instrument</th><th>Price</th><th>% Day</th><th>Range</th><th></th></tr></thead><tbody>`+
+    rows.map(f=>{
+      const q=fxQuotes[f.td];
+      const px=+q.close, pc=+q.percent_change, hi=+q.high, lo=+q.low;
+      const pos = hi>lo ? Math.round((px-lo)/(hi-lo)*100) : 50;
+      const fl = prevPx[f.td]!==undefined && px!==prevPx[f.td] ? (px>prevPx[f.td]?' fup':' fdn') : '';
+      prevPx[f.td]=px;
+      return `<tr class="row" onclick='fxChart(FX.find(x=>x.td==="${f.td}"))'>
+        <td class="tk">${f.name}</td>
+        <td class="${fl}">${px.toFixed(f.dec)}</td>
+        <td class="${pc>=0?'up':'dn'}">${pc>=0?'+':''}${pc.toFixed(2)}%</td>
+        <td style="color:var(--dim)">${pos}% of range</td>
+        <td><button class="addbtn" onclick="event.stopPropagation();fxPlan('${f.td}')">✨</button></td>
+      </tr>`;
+    }).join('')+'</tbody></table>';
+}
+
+function renderFxSessions(){
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const mins = et.getHours()*60+et.getMinutes();
+  const day = et.getDay();
+  const wk = day>=1 && day<=5;
+  // ET session windows (approx, standard hours)
+  const sessions=[
+    {n:'Sydney', open: mins>=17*60 || mins<2*60},
+    {n:'Tokyo',  open: mins>=19*60 || mins<4*60},
+    {n:'London', open: mins>=3*60 && mins<11*60+30},
+    {n:'New York', open: mins>=8*60 && mins<17*60},
+  ];
+  const overlap = wk && mins>=8*60 && mins<11*60+30;
+  document.getElementById('fxSessBody').innerHTML =
+    sessions.map(s=>`<div class="sess-row"><span>${s.n}</span><span class="${wk&&s.open?'sess-open':'sess-closed'}">${wk&&s.open?'● OPEN':'○ closed'}</span></div>`).join('')
+    + (overlap ? '<div class="prime">🔥 LONDON / NY OVERLAP — prime liquidity window (8:00–11:30 ET)</div>'
+               : '<div class="prime" style="background:var(--panel2);color:var(--dim)">Prime window: London/NY overlap 8:00–11:30 ET' + (wk?'':' (weekend — FX closed)') + '</div>');
+}
+setInterval(()=>{ if(curTab==='fx') renderFxSessions(); }, 30000);
+setInterval(()=>{ if(curTab==='fx' && LS.k.td) fxRefresh(); }, 150000); // ~5 credits / 2.5 min ≈ well under 800/day
+
+async function fxPlan(tdSym){
+  const k=LS.k;
+  if(!k.an){ setStatus('⚠ Add your Anthropic key in Settings'); openSettings(); return; }
+  const f=FX.find(x=>x.td===tdSym), q=fxQuotes[tdSym];
+  if(!q){ setStatus('⚠ Refresh quotes first'); return; }
+  document.getElementById('fxPlanSym').textContent=f.name;
+  document.getElementById('fxPlanBody').innerHTML='<div class="empty"><span class="spin"></span> Analyzing '+f.name+'…</div>';
+  const et = new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const prompt = `You are a disciplined forex/gold day-trading assistant. Style: session-based momentum — trade with the trend during high-liquidity windows, stops beyond structure, minimum 2:1 reward:risk.
+
+REAL data for ${f.name} (${tdSym}) right now:
+- Last: ${(+q.close).toFixed(f.dec)}, Open: ${(+q.open).toFixed(f.dec)}, Prev close: ${(+q.previous_close).toFixed(f.dec)}
+- Day high: ${(+q.high).toFixed(f.dec)}, Day low: ${(+q.low).toFixed(f.dec)}, Day change: ${(+q.percent_change).toFixed(2)}%
+- Time now: ${et.toLocaleTimeString('en-US')} ET (${et.toLocaleDateString('en-US',{weekday:'long'})})
+- Trader risk budget per trade: $${k.risk||50}
+
+Using ONLY these real numbers, respond with pure JSON, no markdown:
+{"bias":"long/short/stand-aside","entry":"level or zone","stop":"level","target":"level","rr":"X.X:1","session_note":"which session is driving price now and whether this is a good time window","why":"2-3 sentences: structure, where price sits in the day range, what invalidates the idea, A/B/C grade. If conditions are poor (dead session, mid-range chop, big news imminent), say stand-aside."}`;
+  try{
+    const r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':k.an,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5',max_tokens:500,messages:[{role:'user',content:prompt}]})
+    });
+    const j=await r.json();
+    if(j.error) throw new Error(j.error.message);
+    const txt=j.content[0].text.replace(/```json|```/g,'').trim();
+    const p=JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}')+1));
+    const biasCol = p.bias&&p.bias.toLowerCase().includes('long')?'var(--green)':p.bias&&p.bias.toLowerCase().includes('short')?'var(--red)':'var(--amber)';
+    document.getElementById('fxPlanBody').innerHTML = `<div class="card">
+      <div class="top"><span class="tk">${f.name}</span><span style="color:${biasCol};font-weight:700;text-transform:uppercase">${esc(p.bias)}</span></div>
+      <div class="levels">
+        <div class="lv"><div class="l">Entry</div><div class="v" style="color:var(--blue)">${esc(p.entry)||'—'}</div></div>
+        <div class="lv"><div class="l">Stop</div><div class="v" style="color:var(--red)">${esc(p.stop)||'—'}</div></div>
+        <div class="lv"><div class="l">Target</div><div class="v" style="color:var(--green)">${esc(p.target)||'—'}</div></div>
+      </div>
+      <div class="levels"><div class="lv" style="grid-column:span 2"><div class="l">Session</div><div class="v" style="font-size:11px">${esc(p.session_note)||'—'}</div></div>
+      <div class="lv"><div class="l">R:R</div><div class="v">${esc(p.rr)||'—'}</div></div></div>
+      <div class="why">${esc(p.why)}</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <a class="aibtn" style="flex:1;text-align:center;text-decoration:none;background:#123c66;border-color:#1d5a94;color:#7cb8f0" href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(f.tv)}" target="_blank">↗ Trade on TradingView</a>
+      </div></div>`;
+    setStatus(f.name+' plan ready ✓');
+  }catch(e){
+    document.getElementById('fxPlanBody').innerHTML='<div class="empty">⚠ '+esc(e.message)+'</div>';
+    setStatus('⚠ AI failed');
+  }
+}
+
+/* ---------- Master refresh ---------- */
+async function refreshAll(){
+  if(curTab==='fx'){ await fxRefresh(); renderFxSessions(); return; }
+  const sess = document.getElementById('session').textContent;
+  if(sess==='PRE-MARKET'){ setScanMode('pm'); }
+  else { await scanGainers(); }
+  await refreshQuotes();
+  await loadNews();
+}
+
+/* ---------- Init ---------- */
+updateModeUI();
+renderWatchlist(); renderLog(); renderPnl();
+if(!LS.k.av && !LS.k.fh){ setTimeout(openSettings, 600); }
+// stream the watchlist for real-time alerts + halt detection whenever a Finnhub key exists
+if(LS.k.fh && LS.wl.length){ setTimeout(ensureWS, 1500); }
+setScanMode('av');
+
+/* ---------- Auto-scan engine (user-scheduled, ⚙ Settings) ----------
+   ON + inside window (ET, weekdays): quotes ~60s, scanner + news at the
+   chosen interval. Pre-market -> Pre-Mkt Gaps scan; after open -> gap
+   re-scan of cached universe + watchlist. OFF/outside window: manual only. */
+let lastAutoQuotes=0, lastAutoScan=0;
+function inAutoWindow(){
+  const a=autoCfg(); if(!a.on) return false;
+  const et=new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const d=et.getDay(); if(d<1||d>5) return false;
+  const m=et.getHours()*60+et.getMinutes();
+  const [sh,sm]=a.start.split(':').map(Number), [eh,em]=a.end.split(':').map(Number);
+  return m>=sh*60+sm && m<eh*60+em;
+}
+function paintAutoBadge(){
+  const a=autoCfg(), b=document.getElementById('autoBadge');
+  if(!a.on){ b.style.display='none'; return; }
+  b.style.display='';
+  const live=inAutoWindow();
+  b.className='session '+(live?'open':'closed');
+  b.textContent = live ? '🤖 AUTO ●' : '🤖 AUTO '+a.start+'–'+a.end;
+}
+setInterval(()=>{
+  paintAutoBadge();
+  if(!inAutoWindow() || document.hidden) return;
+  const a=autoCfg(), now=Date.now();
+  if(LS.k.fh && LS.wl.length && now-lastAutoQuotes>=55000){ lastAutoQuotes=now; refreshQuotes(); }
+  if(now-lastAutoScan>=a.int*60000){
+    lastAutoScan=now;
+    const s=document.getElementById('session').textContent;
+    if(LS.k.fh){
+      if(s==='PRE-MARKET' && scanMode!=='pm') setScanMode('pm'); // switches + scans
+      else scanPremarket(); // gap re-scan of universe+watchlist (works all day)
+      loadNews();
+    }
+  }
+}, 15000);
+paintAutoBadge();
+
+/* ---------- Screen wake lock (☀ awake) — phone stays on while trading ---------- */
+let wakeLock=null, wantWake=false;
+async function acquireWake(){
+  try{
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', ()=>{ wakeLock=null; paintWake(); });
+  }catch(e){ wantWake=false; setStatus('⚠ Wake lock unavailable: '+e.message); }
+  paintWake();
+}
+async function toggleWake(){
+  wantWake=!wantWake;
+  if(!wantWake && wakeLock){ try{ await wakeLock.release(); }catch(e){} wakeLock=null; paintWake(); }
+  else if(wantWake) acquireWake();
+}
+function paintWake(){
+  const b=document.getElementById('wakeBtn');
+  if(wantWake){ b.style.color='var(--amber)'; b.style.borderColor='var(--amber)'; b.textContent='☀ awake ●'; }
+  else { b.style.color='var(--dim)'; b.style.borderColor='var(--border)'; b.textContent='☀ awake'; }
+}
+if('wakeLock' in navigator){ document.getElementById('wakeBtn').style.display=''; }
+document.addEventListener('visibilitychange', ()=>{
+  // returning to the app: re-acquire wake lock if wanted, nudge data if auto window is live
+  if(document.visibilityState==='visible'){
+    if(wantWake && !wakeLock) acquireWake();
+    if(inAutoWindow()) refreshQuotes();
+  }
+});
+
+/* ---------- PWA: installable app shell ---------- */
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+// ask for notification permission once (for entry/HOD alerts)
+if('Notification' in window && Notification.permission==='default'){
+  setTimeout(()=>Notification.requestPermission(), 2000);
+}
+</script>
+</body>
+</html>
