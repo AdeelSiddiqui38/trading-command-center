@@ -1,0 +1,12 @@
+# Built macOS app wrapper (regenerate with build-macos-app.sh)
+Trading Command Center.app/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/local
+.vscode/
+.idea/
+*.log
