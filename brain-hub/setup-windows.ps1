@@ -23,7 +23,8 @@ function Say($m){ $m | Add-Content $REPORT; Write-Host $m }
 
 # ---------- 1. stop old copies ----------
 Say "`n[1] Stopping old bot windows..."
-$pat = 'telegram_listener\.py|paperbot\.py|leverage_bot\.py|vibe-trading(\.exe)?\W+dev|cli\._legacy\s+serve|vite(\.js)?\W.*--port\s+5899|run dev -- --port 5899|trading-signal-agent.*server\.js|BRAIN\\trading-hub\\hub\.py'
+try { Invoke-RestMethod -Method Post http://127.0.0.1:7777/api/shutdown -TimeoutSec 5 | Out-Null; Say "    asked running hub to shut down"; Start-Sleep -Seconds 4 } catch {}
+$pat = 'telegram_listener\.py|paperbot\.py|leverage_bot\.py|vibe-trading(\.exe)?\W+dev|cli\._legacy\s+serve|vite(\.js)?\W.*--port\s+5899|run dev -- --port 5899|trading-signal-agent.*server\.js|BRAIN\\trading-hub\\hub\.py|python(\.exe)?"?\s+"?hub\.py'
 $me = $PID
 $procs = Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $me -and $_.CommandLine -and $_.CommandLine -match $pat -and $_.CommandLine -notmatch 'setup-windows\.ps1' }
 foreach($p in $procs){ Say ("    stop {0} {1}" -f $p.ProcessId, ($p.CommandLine.Substring(0,[Math]::Min(120,$p.CommandLine.Length)))); & taskkill /PID $p.ProcessId /T /F 2>$null | Out-Null }
