@@ -687,7 +687,8 @@ class Handler(BaseHTTPRequestHandler):
 
 # ---------------------------------------------------------------------------
 def open_app():
-    if os.environ.get("BRAIN_NO_OPEN"):
+    # The launchers open the app themselves; the hub stays headless.
+    if not os.environ.get("BRAIN_OPEN_FROM_HUB"):
         return
     try:
         if IS_WIN:

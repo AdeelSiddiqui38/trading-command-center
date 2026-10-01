@@ -27,6 +27,8 @@ BRAIN="$HOME/Documents/BRAIN"
 sleep 2
 cd "$BRAIN/trading-hub"
 nohup python3 hub.py >> logs-launch.txt 2>&1 &
+sleep 2
+open -na "Google Chrome" --args --app="https://adeelsiddiqui38.github.io/trading-command-center/index.html" || open "https://adeelsiddiqui38.github.io/trading-command-center/index.html"
 EOF
 chmod +x "$HUB/launch.sh"
 
