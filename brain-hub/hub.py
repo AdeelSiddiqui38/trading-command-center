@@ -43,15 +43,14 @@ CONFIG_PATH = os.path.join(HUB_DIR, "hub_config.json")
 IS_WIN = os.name == "nt"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# When started hidden there may be no usable stdout/stderr: send them (and any
-# hard-crash traceback) to logs/hub.console.log so nothing ever dies silently.
-_console = sys.__stderr__
+# Never write to a console: a hidden console that nobody reads can block a
+# write forever and freeze the hub. stdout/stderr (and hard-crash tracebacks)
+# all go to logs/hub.console.log instead.
+_console = None
 try:
     _console = open(os.path.join(LOG_DIR, "hub.console.log"), "a", encoding="utf-8", buffering=1)
-    if sys.stdout is None or not getattr(sys.stdout, "isatty", lambda: False)():
-        sys.stdout = _console
-    if sys.stderr is None or not getattr(sys.stderr, "isatty", lambda: False)():
-        sys.stderr = _console
+    sys.stdout = _console
+    sys.stderr = _console
     import faulthandler
     faulthandler.enable(_console)
 except Exception:
@@ -106,10 +105,6 @@ def hub_log(msg):
                 f.write(line + "\n")
         except Exception:
             pass
-    try:
-        print(line, flush=True)
-    except Exception:
-        pass
 
 
 def python_exe():
@@ -188,11 +183,11 @@ def list_processes():
         if IS_WIN:
             ps = ("Get-CimInstance Win32_Process | ForEach-Object { "
                   "\"$($_.ProcessId)`t$($_.ParentProcessId)`t$($_.CommandLine)\" }")
-            r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True,
+            r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, stdin=subprocess.DEVNULL,
                                text=True, timeout=60, creationflags=0x08000000, encoding="utf-8", errors="replace")
             lines = r.stdout.splitlines()
         else:
-            r = subprocess.run(["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True, timeout=30)
+            r = subprocess.run(["ps", "-axo", "pid=,ppid=,command="], capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=30)
             lines = [re.sub(r"^\s*(\d+)\s+(\d+)\s+", r"\1\t\2\t", l) for l in r.stdout.splitlines()]
         for l in lines:
             parts = l.split("\t", 2)
@@ -206,7 +201,7 @@ def list_processes():
 def kill_tree(pid):
     try:
         if IS_WIN:
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30,
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, stdin=subprocess.DEVNULL, timeout=30,
                            creationflags=0x08000000)
         else:
             try:
@@ -225,9 +220,9 @@ def kill_port_owners(ports):
             if IS_WIN:
                 r = subprocess.run(["powershell", "-NoProfile", "-Command",
                                     f"(Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue).OwningProcess"],
-                                   capture_output=True, text=True, timeout=30, creationflags=0x08000000)
+                                   capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=30, creationflags=0x08000000)
             else:
-                r = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True, timeout=15)
+                r = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=15)
             for tok in r.stdout.split():
                 if tok.strip().isdigit() and int(tok) not in (0, 4, os.getpid()):
                     pids.add(int(tok))
@@ -794,7 +789,7 @@ def main():
         import faulthandler
         while True:
             try:
-                faulthandler.dump_traceback_later(90, repeat=False, file=_console, exit=False)
+                faulthandler.dump_traceback_later(90, repeat=False, file=_console or sys.__stderr__, exit=False)
             except Exception:
                 pass
             for s in SERVICES:
