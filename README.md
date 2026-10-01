@@ -93,6 +93,20 @@ them:
 
 ---
 
+## 🤖 Bots — Live Trades tab
+
+The third tab shows the paper-trading bots running on your PC: service status
+(start/stop/restart), a live execution feed, Telegram signals, the equity paper
+account (AI via Vibe-Trading) and the crypto leverage account with live P&L and
+liquidation risk.
+
+It reads from the local **BRAIN trading hub** (`Documents\BRAIN\trading-hub\hub.py`)
+at `http://127.0.0.1:7777`, which runs every bot hidden in the background. The
+Desktop icon starts the hub and opens this app. If the hub isn't running the tab
+just says so; nothing else in the dashboard is affected. Paper money only.
+
+---
+
 ## Files
 
 | File | Purpose |

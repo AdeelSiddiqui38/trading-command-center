@@ -1,7 +1,7 @@
 /* Trading Command Center — service worker
    Caches the app shell so the PWA installs and opens instantly.
    All market-data/API requests always go to the network (never cached). */
-const CACHE = 'tcc-shell-v1';
+const CACHE = 'tcc-shell-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

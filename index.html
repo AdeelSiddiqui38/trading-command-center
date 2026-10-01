@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://unpkg.com; style-src 'unsafe-inline'; img-src 'self' https: data:; font-src data: https:; connect-src 'self' https://www.alphavantage.co https://finnhub.io wss://ws.finnhub.io https://api.twelvedata.com https://api.anthropic.com https://*.tradingview.com; frame-src https://*.tradingview.com https://*.tradingview-widget.com; manifest-src 'self'; worker-src 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://unpkg.com; style-src 'unsafe-inline'; img-src 'self' https: data:; font-src data: https:; connect-src 'self' http://127.0.0.1:7777 http://localhost:7777 https://www.alphavantage.co https://finnhub.io wss://ws.finnhub.io https://api.twelvedata.com https://api.anthropic.com https://*.tradingview.com; frame-src https://*.tradingview.com https://*.tradingview-widget.com; manifest-src 'self'; worker-src 'self';">
 <title>Adeel's Trading Command Center</title>
 <meta name="theme-color" content="#0b0e14">
 <link rel="manifest" href="manifest.webmanifest">
@@ -227,6 +227,50 @@ button:active{transform:scale(.96)}
 ::selection{background:rgba(34,197,94,.3)}
 .disclaimer{font-size:10px;color:#4a5468;padding:4px 14px;text-align:center;background:var(--panel);border-top:1px solid var(--border)}
 
+
+/* ---------- Bots — Live Trades tab ---------- */
+#gridBots{flex:1;display:none;grid-template-columns:1fr 1.15fr 1.15fr 1fr;grid-template-rows:1fr 1.1fr;gap:8px;padding:8px;min-height:0}
+#botFeedPanel{grid-column:2/4}
+#botEqPanel{grid-column:1/3}
+#botLevPanel{grid-column:3/5}
+.tab .hubdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#4a5468;margin-left:6px;vertical-align:1px}
+.tab .hubdot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.tab .hubdot.off{background:var(--red)}
+.svc{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #1a2030}
+.svc .nm{font-weight:700;color:#fff;font-size:12px}
+.svc .sub{font-size:10px;color:var(--dim);margin-top:2px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.svc .st{margin-left:auto;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px;letter-spacing:.4px}
+.st.running{background:#0e3b21;color:var(--green)} .st.starting{background:#3b2f0e;color:var(--amber)}
+.st.stopped,.st.missing{background:#232a38;color:var(--dim)} .st.crashed{background:#3b0e0e;color:var(--red)}
+.svc .acts{display:flex;gap:4px}
+.svc .acts button{background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:2px 7px;font-size:10px}
+.svc .acts button:hover{color:var(--text);border-color:var(--blue)}
+.statstrip{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);flex-shrink:0}
+.statstrip .s{background:var(--bg);border-radius:6px;padding:6px 8px}
+.statstrip .s .l{font-size:9px;text-transform:uppercase;color:var(--dim);letter-spacing:.5px}
+.statstrip .s .v{font-weight:800;font-size:14px;margin-top:2px;font-variant-numeric:tabular-nums}
+.subhead{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);padding:8px 12px 4px}
+.feed-row{display:flex;gap:8px;padding:6px 12px;border-bottom:1px solid #1a2030;font-size:12px;line-height:1.4;animation:fadeup .3s ease both}
+.feed-row .t{color:var(--dim);font-variant-numeric:tabular-nums;font-size:11px;flex-shrink:0;width:58px}
+.feed-row .src{flex-shrink:0;font-size:9px;font-weight:800;border-radius:4px;padding:1px 6px;height:16px;line-height:14px;letter-spacing:.4px}
+.src.equity{background:#123c66;color:#7cb8f0} .src.crypto{background:#2a1c3f;color:var(--purple)}
+.src.telegram{background:#0e2f3b;color:#38bdf8} .src.hub{background:#232a38;color:var(--dim)}
+.feed-row .tx{flex:1;min-width:0;word-break:break-word}
+.feed-row.k-buy .tx,.feed-row.k-open .tx{color:var(--green);font-weight:700}
+.feed-row.k-sell .tx,.feed-row.k-exit .tx{color:var(--amber);font-weight:700}
+.feed-row.k-liq .tx,.feed-row.k-error .tx{color:var(--red);font-weight:700}
+.feed-row.k-signal .tx{color:#38bdf8}
+.feed-row.k-hold .tx{color:var(--dim)}
+.feed-row.fresh{background:rgba(34,197,94,.08)}
+.liqbar{height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;min-width:60px}
+.liqbar>div{height:100%}
+.hubdown{padding:30px 20px;text-align:center;color:var(--dim);line-height:1.7}
+.hubdown b{color:var(--text)}
+.feedfilter{margin-left:auto;display:flex;gap:4px}
+.feedfilter button{background:var(--panel2);border:1px solid var(--border);color:var(--dim);border-radius:5px;padding:1px 7px;font-size:10px;text-transform:none;letter-spacing:0}
+.feedfilter button.on{color:var(--green);border-color:var(--green)}
+@media (max-width:900px){ #gridBots{display:none;flex-direction:column;gap:10px;padding:8px} .statstrip{grid-template-columns:repeat(3,1fr)} }
+
 /* ---------- Mobile / PWA layout ---------- */
 @media (max-width:900px){
   body{height:auto;min-height:100vh;overflow:auto;animation:none}
@@ -286,6 +330,7 @@ button:active{transform:scale(.96)}
 <div id="tabs">
   <button class="tab active" id="tabStocks" onclick="switchTab('stocks')">Stocks — Momentum</button>
   <button class="tab" id="tabFx" onclick="switchTab('fx')">Gold & Forex</button>
+  <button class="tab" id="tabBots" onclick="switchTab('bots')">🤖 Bots — Live Trades<span class="hubdot" id="hubDot"></span></button>
 </div>
 
 <div id="grid">
@@ -375,6 +420,36 @@ button:active{transform:scale(.96)}
   <div class="panel">
     <h2><span class="dot" style="background:var(--purple)"></span>AI Trade Plan — <span id="fxPlanSym" style="color:#fff;text-transform:none">pick an instrument</span></h2>
     <div class="body" id="fxPlanBody"><div class="empty">Click ✨ on any quote row for an AI plan with real prices.<br>P&L for FX trades: log them in the Stocks tab trade log with your $ result.</div></div>
+  </div>
+</div>
+
+
+<div id="gridBots">
+  <div class="panel" id="botSvcPanel">
+    <h2><span class="dot" style="background:var(--green)"></span>Background Services <span class="count" id="svcCount">–</span></h2>
+    <div class="body" id="svcBody"></div>
+  </div>
+  <div class="panel" id="botFeedPanel">
+    <h2><span class="dot" style="background:var(--amber)"></span>Live Trade Execution Feed
+      <span class="feedfilter">
+        <button class="on" data-f="trades" onclick="setFeedFilter('trades')">Trades + signals</button>
+        <button data-f="all" onclick="setFeedFilter('all')">Everything</button>
+      </span></h2>
+    <div class="body" id="feedBody"></div>
+  </div>
+  <div class="panel" id="botSigPanel">
+    <h2><span class="dot" style="background:#38bdf8"></span>Telegram Signals <span class="count" id="sigCount">0</span></h2>
+    <div class="body" id="sigBody"></div>
+  </div>
+  <div class="panel" id="botEqPanel">
+    <h2><span class="dot" style="background:var(--blue)"></span>Equity Paper Bot — AI (Vibe-Trading) <span class="count" id="eqUpd">–</span></h2>
+    <div class="statstrip" id="eqStats"></div>
+    <div class="body" id="eqBody"></div>
+  </div>
+  <div class="panel" id="botLevPanel">
+    <h2><span class="dot" style="background:var(--purple)"></span>Crypto Leverage Bot — Telegram screenshots (MEXC prices) <span class="count" id="levUpd">–</span></h2>
+    <div class="statstrip" id="levStats"></div>
+    <div class="body" id="levBody"></div>
   </div>
 </div>
 
@@ -1148,9 +1223,12 @@ function switchTab(t){
   curTab = t;
   document.getElementById('tabStocks').className='tab'+(t==='stocks'?' active':'');
   document.getElementById('tabFx').className='tab'+(t==='fx'?' active':'');
+  document.getElementById('tabBots').className='tab'+(t==='bots'?' active':'');
   const lay = window.matchMedia('(max-width:900px)').matches ? 'flex' : 'grid';
   document.getElementById('grid').style.display = t==='stocks'?lay:'none';
   document.getElementById('gridFx').style.display = t==='fx'?lay:'none';
+  document.getElementById('gridBots').style.display = t==='bots'?lay:'none';
+  if(t==='bots') hubPoll(true);
   if(t==='fx'){
     renderFxSessions();
     if(!document.getElementById('fxChartWrap').hasChildNodes()) fxChart(fxSel);
@@ -1374,6 +1452,169 @@ if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catc
 if('Notification' in window && Notification.permission==='default'){
   setTimeout(()=>Notification.requestPermission(), 2000);
 }
+
+/* =========================================================
+   🤖 BOTS — LIVE TRADES  (talks to the local BRAIN hub)
+   The hub (Documents\BRAIN\trading-hub\hub.py) runs the paper bots,
+   Telegram listener and Vibe-Trading hidden in the background and
+   exposes their portfolios + logs on http://127.0.0.1:7777.
+   Paper money only — nothing here touches a broker.
+   ========================================================= */
+const HUB = (localStorage.getItem('tcc_hub') || 'http://127.0.0.1:7777').replace(/\/$/,'');
+let hubState = null, hubOk = null, feedFilter = localStorage.getItem('tcc_feedf') || 'trades';
+let lastEventKey = localStorage.getItem('tcc_lastevt') || '', hubTimer = null;
+const money = v => (v==null||isNaN(v)) ? '–' : (v<0?'-':'')+'$'+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const sgn = v => (v==null||isNaN(v)) ? '–' : (v>=0?'+':'-')+'$'+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const cls = v => v>0?'up':v<0?'dn':'';
+const px = v => (v==null||isNaN(v)) ? '–' : (+v>=100? (+v).toFixed(2) : +v>=1 ? (+v).toFixed(3) : (+v).toPrecision(4));
+function ago(iso){ if(!iso) return ''; const d=(Date.now()-new Date(iso).getTime())/1000; if(isNaN(d)) return ''; if(d<60) return Math.round(d)+'s ago'; if(d<3600) return Math.round(d/60)+'m ago'; if(d<86400) return Math.round(d/3600)+'h ago'; return Math.round(d/86400)+'d ago'; }
+function hhmm(iso){ const d=new Date(iso); return isNaN(d)?'':d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}); }
+
+async function hubPoll(force){
+  clearTimeout(hubTimer);
+  try{
+    const r = await fetch(HUB+'/api/state', {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    hubState = await r.json(); hubOk = true;
+    checkNewEvents(hubState.feed||[]);
+  }catch(e){ hubOk = false; }
+  const dot=document.getElementById('hubDot'); dot.className='hubdot '+(hubOk?'on':'off');
+  dot.title = hubOk ? 'Bots hub connected' : 'Bots hub offline';
+  if(curTab==='bots') renderBots();
+  hubTimer = setTimeout(hubPoll, curTab==='bots' ? 3000 : 15000);
+}
+
+function checkNewEvents(feed){
+  const trades = feed.filter(e=>['buy','sell','open','exit','liq'].includes(e.kind));
+  if(!trades.length) return;
+  const top = trades[0], key = top.ts+'|'+top.text;
+  if(lastEventKey && key!==lastEventKey){
+    const idx = trades.findIndex(e=>(e.ts+'|'+e.text)===lastEventKey);
+    const fresh = idx<0 ? [top] : trades.slice(0, idx);
+    fresh.slice(0,3).forEach(e=>{
+      notify('🤖 Paper trade: '+e.kind.toUpperCase(), e.text.slice(0,140));
+      try{ beep(e.kind==='liq'?300:e.kind==='buy'||e.kind==='open'?980:660, .18, 2); }catch(_){}
+    });
+  }
+  lastEventKey = key; localStorage.setItem('tcc_lastevt', key);
+}
+
+function setFeedFilter(f){ feedFilter=f; localStorage.setItem('tcc_feedf',f);
+  document.querySelectorAll('.feedfilter button').forEach(b=>b.classList.toggle('on', b.dataset.f===f)); renderBots(); }
+
+async function svcAction(name, act){
+  try{ await fetch(HUB+'/api/service/'+encodeURIComponent(name)+'/'+act, {method:'POST'}); }catch(e){}
+  setTimeout(()=>hubPoll(true), 800);
+}
+
+function renderBots(){
+  document.querySelectorAll('.feedfilter button').forEach(b=>b.classList.toggle('on', b.dataset.f===feedFilter));
+  const ids=['svcBody','feedBody','sigBody','eqBody','levBody'];
+  if(!hubOk || !hubState){
+    const msg = '<div class="hubdown">🔌 <b>Bots hub is not running.</b><br>Double-click <b>Adeel\'s Trading Command Center</b> on your Desktop — it starts the bots in the background and opens this app.<br><span style="font-size:11px">Expecting the hub at '+esc(HUB)+'</span></div>';
+    ids.forEach((id,i)=>document.getElementById(id).innerHTML = i===0?msg:'');
+    ['eqStats','levStats'].forEach(id=>document.getElementById(id).innerHTML='');
+    document.getElementById('svcCount').textContent='offline';
+    return;
+  }
+  const S = hubState;
+
+  // ---- services ----
+  const svcs = S.services||[];
+  document.getElementById('svcCount').textContent = svcs.filter(x=>x.status==='running').length+'/'+svcs.length+' running';
+  document.getElementById('svcBody').innerHTML = svcs.map(v=>`
+    <div class="svc">
+      <div style="min-width:0">
+        <div class="nm">${esc(v.label)}</div>
+        <div class="sub" title="${esc(v.last_line||'')}">${v.status==='running'?'up '+fmtDur(v.uptime_s)+(v.restarts?' · '+v.restarts+' restarts':'')+' · ':''}${esc(v.last_line||v.note||'')}</div>
+      </div>
+      <span class="st ${esc(v.status)}">${esc(v.status.toUpperCase())}</span>
+      <div class="acts">${v.status==='running'||v.status==='starting'
+        ? `<button onclick="svcAction('${esc(v.name)}','restart')" title="Restart">↻</button><button onclick="svcAction('${esc(v.name)}','stop')" title="Stop">■</button>`
+        : v.status==='missing' ? '' : `<button onclick="svcAction('${esc(v.name)}','start')" title="Start">▶</button>`}</div>
+    </div>`).join('') + `<div class="subhead" style="padding-top:12px">Hub</div>
+    <div style="padding:0 12px 12px;font-size:11px;color:var(--dim);line-height:1.6">Running from <span style="color:var(--text)">${esc(S.hub&&S.hub.root||'')}</span><br>
+    US market: <b class="${S.market&&S.market.us_open?'up':'dn'}">${S.market&&S.market.us_open?'OPEN':'CLOSED'}</b> · equity bot only trades 9:30–16:00 ET · crypto 24/7<br>
+    Logs: <span style="color:var(--text)">${esc(S.hub&&S.hub.logs||'')}</span><br><button onclick="hubShutdown()" style="margin-top:10px;background:#3b0e0e;border:1px solid #6b1d1d;color:var(--red);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700">■ Stop all bots</button></div>`;
+
+  // ---- feed ----
+  let feed = S.feed||[];
+  if(feedFilter==='trades') feed = feed.filter(e=>e.kind!=='info' && e.kind!=='hold');
+  document.getElementById('feedBody').innerHTML = feed.length ? feed.slice(0,200).map(e=>`
+    <div class="feed-row k-${esc(e.kind)} ${(Date.now()-new Date(e.ts).getTime())<120000?'fresh':''}">
+      <span class="t" title="${esc(e.ts)}">${esc(hhmm(e.ts))}</span>
+      <span class="src ${esc(e.src)}">${esc(e.src.toUpperCase())}</span>
+      <span class="tx">${esc(e.text)}</span>
+    </div>`).join('') : '<div class="empty">No trades or signals yet.<br>The equity bot checks its watchlist every 30 min during market hours; the crypto bot opens a position whenever a Telegram screenshot signal arrives.</div>';
+
+  // ---- signals ----
+  const sig = S.signals||{tickers:[],leverage:[]};
+  const allSig = [...(sig.leverage||[]).map(c=>({...c,_t:'lev'})), ...(sig.tickers||[]).map(c=>({...c,_t:'tk'}))]
+      .sort((a,b)=>new Date(b.received_at)-new Date(a.received_at));
+  document.getElementById('sigCount').textContent = allSig.length;
+  document.getElementById('sigBody').innerHTML = allSig.length ? `<table><tr><th>When</th><th>Signal</th><th>Status</th></tr>${allSig.slice(0,60).map(c=> c._t==='lev'
+    ? `<tr><td style="color:var(--dim)">${esc(ago(c.received_at))}</td><td><span class="${c.side==='long'?'up':'dn'}" style="font-weight:800">${esc(String(c.side).toUpperCase())}</span> <span class="tk">${esc(c.symbol)}</span> ${esc(c.leverage)}x</td><td style="color:var(--dim)">${c.consumed?'traded ✓':'queued'}</td></tr>`
+    : `<tr class="row" onclick="botOpenChart('${esc(c.ticker)}')"><td style="color:var(--dim)">${esc(ago(c.received_at))}</td><td><span class="tk">$${esc(c.ticker)}</span> <span style="color:var(--dim);font-size:11px">${esc((c.text||'').slice(0,40))}</span></td><td style="color:var(--dim)">→ AI watchlist</td></tr>`).join('')}</table>`
+    : '<div class="empty">Waiting for messages in your Telegram channel(s).<br>$TICKER mentions go to the equity bot\'s watchlist; position screenshots become crypto paper trades.</div>';
+
+  // ---- equity ----
+  const E = S.equity||{};
+  document.getElementById('eqUpd').textContent = E.prices_at ? 'prices '+ago(E.prices_at) : '–';
+  const eqTot = E.total_value, eqStart = E.starting_cash||10000;
+  document.getElementById('eqStats').innerHTML = [
+    ['Account value', money(eqTot), cls(eqTot-eqStart)],
+    ['Total P&L', sgn(eqTot-eqStart)+' ('+((eqTot/eqStart-1)*100||0).toFixed(2)+'%)', cls(eqTot-eqStart)],
+    ['Cash', money(E.cash), ''],
+    ['Open P&L', sgn(E.unrealized), cls(E.unrealized)],
+    ['Closed P&L · win rate', sgn(E.realized)+' · '+(E.win_rate==null?'–':E.win_rate+'%'), cls(E.realized)]
+  ].map(x=>`<div class="s"><div class="l">${x[0]}</div><div class="v ${x[2]}">${x[1]}</div></div>`).join('');
+  const pos = E.positions||[], etr = (E.trades||[]);
+  document.getElementById('eqBody').innerHTML =
+    `<div class="subhead">Open positions (${pos.length})</div>` +
+    (pos.length ? `<table><tr><th>Ticker</th><th>Qty</th><th>Avg</th><th>Last</th><th>Value</th><th>Open P&L</th></tr>${pos.map(p=>`
+      <tr class="row" onclick="botOpenChart('${esc(p.ticker)}')"><td class="tk">${esc(p.ticker)}</td><td>${p.qty}</td><td>${px(p.avg_price)}</td><td>${px(p.price)}</td><td>${money(p.value)}</td>
+      <td class="${cls(p.upnl)}">${sgn(p.upnl)} <span style="font-size:10px">(${(p.upnl_pct||0).toFixed(2)}%)</span></td></tr>`).join('')}</table>`
+      : '<div class="empty" style="padding:12px">No open positions — the AI is holding cash.</div>') +
+    `<div class="subhead">Executed trades (${etr.length})</div>` +
+    (etr.length ? `<table><tr><th>Time</th><th>Side</th><th>Ticker</th><th>Qty</th><th>Price</th><th>P&L</th><th>Conf.</th></tr>${etr.slice(0,50).map(t=>`
+      <tr class="row" title="${esc(t.reasoning||'')}" onclick="botOpenChart('${esc(t.ticker)}')"><td style="color:var(--dim)">${esc(hhmm(t.ts))} <span style="font-size:10px">${esc(ago(t.ts))}</span></td>
+      <td class="${t.action==='buy'?'up':'dn'}" style="font-weight:800">${esc(String(t.action).toUpperCase())}</td><td class="tk">${esc(t.ticker)}</td><td>${t.qty}</td><td>${px(t.price)}</td>
+      <td class="${cls(t.pnl)}">${t.pnl==null?'–':sgn(t.pnl)}</td><td>${t.confidence!=null?Math.round(t.confidence*100)+'%':'–'}</td></tr>`).join('')}</table>`
+      : '<div class="empty" style="padding:12px">No trades yet. Hover a trade later to see the AI\'s reasoning.</div>');
+
+  // ---- leverage ----
+  const L = S.leverage||{};
+  document.getElementById('levUpd').textContent = L.prices_at ? 'prices '+ago(L.prices_at) : '–';
+  const lStart = L.starting_cash||10000, lEq = L.equity;
+  document.getElementById('levStats').innerHTML = [
+    ['Account equity', money(lEq), cls(lEq-lStart)],
+    ['Total P&L', sgn(lEq-lStart)+' ('+((lEq/lStart-1)*100||0).toFixed(2)+'%)', cls(lEq-lStart)],
+    ['Margin at risk', money(L.margin_in_use), L.margin_in_use>0?'':''],
+    ['Open P&L', sgn(L.unrealized), cls(L.unrealized)],
+    ['Closed · W/L/Liq', sgn(L.realized)+' · '+(L.wins||0)+'/'+(L.losses||0)+'/'+(L.liquidations||0), cls(L.realized)]
+  ].map(x=>`<div class="s"><div class="l">${x[0]}</div><div class="v ${x[2]}">${x[1]}</div></div>`).join('');
+  const lo = L.open||[], lc = L.closed||[];
+  document.getElementById('levBody').innerHTML =
+    `<div class="subhead">Open positions (${lo.length}) — live, refreshed every few seconds</div>` +
+    (lo.length ? `<table><tr><th>Symbol</th><th>Side</th><th>Lev</th><th>Entry</th><th>Now</th><th>Liq</th><th>Liq risk</th><th>Open P&L</th><th>Age</th></tr>${lo.map(p=>{
+      const risk = Math.max(0,Math.min(100, 100-(p.dist_to_liq_pct||0)/(100/p.leverage)*100));
+      return `<tr class="row" onclick="window.open('https://www.tradingview.com/chart/?symbol='+encodeURIComponent('MEXC:${esc(p.base)}USDT.P'),'_blank')">
+      <td class="tk">${esc(p.base)}</td><td class="${p.side==='long'?'up':'dn'}" style="font-weight:800">${esc(p.side.toUpperCase())}</td><td>${p.leverage}x</td>
+      <td>${px(p.entry_price)}</td><td>${px(p.price)}</td><td style="color:var(--red)">${px(p.liquidation_price)}</td>
+      <td><div class="liqbar" title="${(p.dist_to_liq_pct||0).toFixed(2)}% price move to liquidation"><div style="width:${risk}%;background:${risk>70?'var(--red)':risk>40?'var(--amber)':'var(--green)'}"></div></div></td>
+      <td class="${cls(p.upnl)}">${sgn(p.upnl)} <span style="font-size:10px">(${(p.upnl_pct||0).toFixed(1)}%)</span></td><td style="color:var(--dim)">${esc(ago(p.opened_at).replace(' ago',''))}</td></tr>`}).join('')}</table>`
+      : '<div class="empty" style="padding:12px">No open crypto positions. One opens automatically when a position screenshot is posted in your Telegram channel.</div>') +
+    `<div class="subhead">Closed trades (${lc.length})</div>` +
+    (lc.length ? `<table><tr><th>Closed</th><th>Symbol</th><th>Side</th><th>Lev</th><th>Entry</th><th>Exit</th><th>Reason</th><th>P&L</th></tr>${lc.slice(0,50).map(p=>`
+      <tr><td style="color:var(--dim)">${esc(ago(p.closed_at))}</td><td class="tk">${esc(p.base)}</td><td class="${p.side==='long'?'up':'dn'}">${esc(p.side.toUpperCase())}</td><td>${p.leverage}x</td>
+      <td>${px(p.entry_price)}</td><td>${px(p.close_price)}</td><td style="color:${p.close_reason==='liquidated'?'var(--red)':'var(--dim)'}">${esc(p.close_reason==='liquidated'?'💥 liquidated':p.close_reason==='time_exit'?'24h exit':p.close_reason||'')}</td>
+      <td class="${cls(p.pnl)}">${sgn(p.pnl)}</td></tr>`).join('')}</table>`
+      : '<div class="empty" style="padding:12px">No closed crypto trades yet.</div>');
+}
+async function hubShutdown(){ if(!confirm('Stop every bot and the background hub? Paper trading pauses until you open the app from the Desktop icon again.')) return; try{ await fetch(HUB+'/api/shutdown',{method:'POST'}); }catch(e){} setTimeout(()=>hubPoll(true),1500); }
+function fmtDur(s){ s=+s||0; if(s<60) return Math.round(s)+'s'; if(s<3600) return Math.round(s/60)+'m'; if(s<86400) return (s/3600).toFixed(1)+'h'; return (s/86400).toFixed(1)+'d'; }
+function botOpenChart(sym){ switchTab('stocks'); try{ selectSym(cleanSym(sym)); }catch(e){} }
+setTimeout(hubPoll, 1500);
 </script>
 </body>
 </html>
