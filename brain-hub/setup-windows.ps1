@@ -82,7 +82,7 @@ if(Test-Path (Join-Path $REPO '.git')){
 
 # ---------- 5. hub ----------
 Say "`n[5] Installing hub -> $HUB"
-foreach($f in 'hub.py','prices.py','Launch-Trading.vbs'){
+foreach($f in 'hub.py','prices.py'){
   $s = Join-Path $REPO "brain-hub\$f"
   if(Test-Path $s){ Copy-Item $s (Join-Path $HUB $f) -Force; Say "    $f" } else { Say "    !! missing $s" }
 }
@@ -110,16 +110,17 @@ $appLnk = Join-Path $desk "Adeel's Trading Command Center.lnk"
 $icon = $null
 if(Test-Path $appLnk){
   $old = $sh.CreateShortcut($appLnk)
-  if($old.TargetPath -notmatch 'wscript'){ $icon = $old.IconLocation; Copy-Item $appLnk (Join-Path $ARCH 'old-shortcuts') -Force }
-  else { $icon = $old.IconLocation }
+  $icon = $old.IconLocation; Copy-Item $appLnk (Join-Path $ARCH 'old-shortcuts') -Force
 }
 foreach($n in 'Start All Trading Bots.lnk','Start Paper Trading Bot.lnk','Start Trading Command Center.lnk'){
   $p = Join-Path $desk $n
   if(Test-Path $p){ Move-Item $p (Join-Path $ARCH 'old-shortcuts') -Force; Say "    archived old shortcut: $n" }
 }
 $lnk = $sh.CreateShortcut($appLnk)
-$lnk.TargetPath = "$env:WINDIR\System32\wscript.exe"
-$lnk.Arguments = '"' + (Join-Path $HUB 'Launch-Trading.vbs') + '"'
+$pyw = (Get-Command pythonw -ErrorAction SilentlyContinue).Source
+if(-not $pyw){ $pyw = 'C:\Python314\pythonw.exe' }
+$lnk.TargetPath = $pyw
+$lnk.Arguments = '"' + (Join-Path $HUB 'hub.py') + '"'
 $lnk.WorkingDirectory = $HUB
 $lnk.Description = 'Starts the trading bots in the background and opens the Command Center'
 if($icon -and $icon.Trim(',0 ').Length -gt 0){ $lnk.IconLocation = $icon } else { $lnk.IconLocation = "$env:ProgramFiles\Google\Chrome\Application\chrome.exe,0" }
@@ -128,7 +129,7 @@ Say "    Desktop: Adeel's Trading Command Center  (one click = bots + app)"
 
 # ---------- 7. go ----------
 Say "`n[7] Starting hub..."
-Start-Process "$env:WINDIR\System32\wscript.exe" -ArgumentList ('"' + (Join-Path $HUB 'Launch-Trading.vbs') + '"')
+Start-Process $pyw -ArgumentList ('"' + (Join-Path $HUB 'hub.py') + '"')
 Start-Sleep -Seconds 12
 try { $st = Invoke-RestMethod 'http://127.0.0.1:7777/api/state' -TimeoutSec 10
       foreach($s in $st.services){ Say ("    {0,-40} {1}" -f $s.label, $s.status) } }

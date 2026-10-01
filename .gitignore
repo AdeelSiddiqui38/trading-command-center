@@ -10,3 +10,11 @@ desktop.ini
 .vscode/
 .idea/
 *.log
+
+# Python / hub runtime
+__pycache__/
+*.pyc
+*.bak
+logs/
+hub_config.json
+telegram_state.json

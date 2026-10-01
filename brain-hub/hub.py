@@ -31,6 +31,7 @@ import threading
 import time
 import urllib.request
 import webbrowser
+import zipfile
 from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -65,6 +66,8 @@ DEFAULT_CONFIG = {
     "signal_agent_dir": os.path.join(BRAIN_DIR, "trading-signal-agent"),
     "equity_watchlist": "AAPL,MSFT,NVDA,GOOGL",
     "equity_interval_minutes": 30,
+    "auto_sync": True,
+    "repo_url": "https://github.com/AdeelSiddiqui38/trading-command-center",
     "autostart": {"vibe": True, "telegram": True, "paperbot": True, "leverage": True, "signal_agent": True},
 }
 
@@ -604,6 +607,117 @@ def signals_state():
             "leverage": (read_json(os.path.join(bot, "leverage_candidates.json"), []) or [])[-60:]}
 
 
+
+# ---------------------------------------------------------------------------
+# Keep this PC aligned with the GitHub repo
+#   trading-command-center\          <- git pull (or zip download if git is missing)
+#   trading-hub\hub.py, prices.py    <- copied from trading-command-center\brain-hub
+#   trading-paperbot\telegram_listener.py <- telegram_listener_v2.py
+# ---------------------------------------------------------------------------
+SYNC = {"last": None, "result": "not run yet", "restart_needed": False}
+_sync_lock = threading.Lock()
+
+
+def _norm(b):
+    return b.replace(b"\r\n", b"\n") if b is not None else None
+
+
+def _copy_if_changed(src, dst):
+    try:
+        with open(src, "rb") as f:
+            a = f.read()
+    except OSError:
+        return False
+    try:
+        with open(dst, "rb") as f:
+            b = f.read()
+    except OSError:
+        b = None
+    if _norm(a) == _norm(b):
+        return False
+    if b is not None:
+        try:
+            shutil.copyfile(dst, dst + ".bak")
+        except Exception:
+            pass
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(dst, "wb") as f:
+        f.write(a)
+    return True
+
+
+def _download_repo(repo_dir):
+    url = CFG["repo_url"].rstrip("/") + "/archive/refs/heads/main.zip"
+    with urllib.request.urlopen(url, timeout=90) as r:
+        data = r.read()
+    tmp = os.path.join(LOG_DIR, "repo.zip")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    n = 0
+    with zipfile.ZipFile(tmp) as z:
+        for m in z.infolist():
+            parts = m.filename.split("/", 1)
+            if m.is_dir() or len(parts) < 2 or not parts[1] or parts[1].startswith(".git/"):
+                continue
+            dest = os.path.normpath(os.path.join(repo_dir, parts[1]))
+            if not dest.startswith(os.path.normpath(repo_dir)):
+                continue
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with open(dest, "wb") as f:
+                f.write(z.read(m))
+            n += 1
+    os.remove(tmp)
+    return n
+
+
+def sync_repo():
+    """Pull the repo and align trading-hub / trading-paperbot with it. Returns a short status string."""
+    if not _sync_lock.acquire(blocking=False):
+        return SYNC["result"]
+    try:
+        repo = os.path.join(BRAIN_DIR, "trading-command-center")
+        steps = []
+        git = shutil.which("git")
+        if git and os.path.isdir(os.path.join(repo, ".git")):
+            r = subprocess.run([git, "-C", repo, "pull", "--ff-only", "-q"], capture_output=True,
+                               stdin=subprocess.DEVNULL, text=True, timeout=90,
+                               creationflags=0x08000000 if IS_WIN else 0)
+            if r.returncode != 0:
+                raise RuntimeError("git pull failed: " + (r.stderr or r.stdout).strip()[:200])
+            steps.append("git pull")
+        else:
+            os.makedirs(repo, exist_ok=True)
+            steps.append(f"downloaded {_download_repo(repo)} files")
+
+        src = os.path.join(repo, "brain-hub")
+        changed = []
+        if _copy_if_changed(os.path.join(src, "hub.py"), os.path.join(HUB_DIR, "hub.py")):
+            changed.append("hub.py")
+            SYNC["restart_needed"] = True
+        if _copy_if_changed(os.path.join(src, "prices.py"), os.path.join(HUB_DIR, "prices.py")):
+            changed.append("prices.py")
+            if "prices" in SVC:
+                threading.Thread(target=lambda: (SVC["prices"].stop(), time.sleep(1), SVC["prices"].start(manual=True)),
+                                 daemon=True).start()
+        bot = CFG["bot_dir"]
+        if os.path.exists(os.path.join(bot, "telegram_core.py")) and \
+                _copy_if_changed(os.path.join(src, "telegram_listener_v2.py"), os.path.join(bot, "telegram_listener.py")):
+            changed.append("telegram_listener.py")
+            if "telegram" in SVC:
+                threading.Thread(target=lambda: (SVC["telegram"].stop(), time.sleep(1), SVC["telegram"].start(manual=True)),
+                                 daemon=True).start()
+        msg = ", ".join(steps) + ("; updated " + ", ".join(changed) if changed else "; already aligned")
+        if SYNC["restart_needed"]:
+            msg += " (restart the hub to run the new hub.py)"
+        SYNC["result"] = msg
+    except Exception as e:
+        SYNC["result"] = f"sync failed: {e}"
+    finally:
+        SYNC["last"] = now_iso()
+        hub_event("info", "Code sync: " + SYNC["result"])
+        _sync_lock.release()
+    return SYNC["result"]
+
 STARTED = now_iso()
 
 
@@ -611,7 +725,7 @@ def full_state():
     refresh_prices()
     with FEED_LOCK:
         feed = sorted(FEED, key=lambda e: e["ts"], reverse=True)[:400]
-    return {"hub": {"version": 1, "started": STARTED, "root": BRAIN_DIR, "logs": LOG_DIR},
+    return {"hub": {"version": 1, "started": STARTED, "root": BRAIN_DIR, "logs": LOG_DIR, "sync": SYNC},
             "services": [s.info() for s in SERVICES],
             "equity": equity_state(), "leverage": leverage_state(), "signals": signals_state(),
             "feed": feed, "market": {"us_open": us_market_open()}}
@@ -683,6 +797,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 return self._json({"error": "bad action"}, 400)
             return self._json({"ok": True, "service": s.info()})
+        if parts == ["api", "sync"]:
+            threading.Thread(target=sync_repo, daemon=True).start()
+            return self._json({"ok": True, "sync": SYNC})
         if parts == ["api", "shutdown"]:
             self._json({"ok": True})
             threading.Thread(target=shutdown, daemon=True).start()
@@ -810,6 +927,8 @@ def main():
             time.sleep(2)
 
     threading.Thread(target=supervisor, daemon=True).start()
+    if CFG.get("auto_sync", True):
+        threading.Timer(20.0, sync_repo).start()
     if "--no-open" not in args:
         threading.Timer(2.0, open_app).start()
     try:
