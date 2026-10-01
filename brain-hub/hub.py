@@ -215,21 +215,26 @@ def kill_tree(pid):
 def kill_port_owners(ports):
     """Free ports our services need (leftovers from old windows / a previous hub)."""
     pids = set()
-    for port in ports:
-        try:
-            if IS_WIN:
-                r = subprocess.run(["powershell", "-NoProfile", "-Command",
-                                    f"(Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue).OwningProcess"],
-                                   capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=30, creationflags=0x08000000)
-            else:
-                r = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, stdin=subprocess.DEVNULL, text=True, timeout=15)
-            for tok in r.stdout.split():
-                if tok.strip().isdigit() and int(tok) not in (0, 4, os.getpid()):
-                    pids.add(int(tok))
-        except Exception:
-            pass
+    try:
+        if IS_WIN:
+            r = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, stdin=subprocess.DEVNULL,
+                               text=True, timeout=20, creationflags=0x08000000)
+            for line in r.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and parts[3].upper() == "LISTENING":
+                    port = parts[1].rsplit(":", 1)[-1]
+                    if port.isdigit() and int(port) in ports and parts[4].isdigit():
+                        pids.add(int(parts[4]))
+        else:
+            for port in ports:
+                r = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True,
+                                   stdin=subprocess.DEVNULL, text=True, timeout=15)
+                pids.update(int(t) for t in r.stdout.split() if t.isdigit())
+    except Exception:
+        pass
+    pids -= {0, 4, os.getpid()}
     for pid in pids:
-        hub_log(f"freeing port held by stray process {pid}")
+        hub_log(f"freeing port held by leftover process {pid}")
         kill_tree(pid)
     return len(pids)
 
@@ -687,8 +692,7 @@ class Handler(BaseHTTPRequestHandler):
 
 # ---------------------------------------------------------------------------
 def open_app():
-    # The launchers open the app themselves; the hub stays headless.
-    if not os.environ.get("BRAIN_OPEN_FROM_HUB"):
+    if os.environ.get("BRAIN_NO_OPEN"):
         return
     try:
         if IS_WIN:
@@ -764,7 +768,7 @@ def main():
     #    'database is locked' and port 8899 clashes), plus their parent windows.
     patterns = [p for s in SERVICES for p in s.stray_patterns]
     patterns += [r"-NoExit.*(telegram_listener|paperbot|leverage_bot|vibe-trading|server\.js)"]
-    n = kill_strays(patterns)
+    n = kill_strays(patterns) if CFG.get("kill_strays") else 0
     n += kill_port_owners([p for s in SERVICES for p in s.ports])
     if n:
         time.sleep(2)
