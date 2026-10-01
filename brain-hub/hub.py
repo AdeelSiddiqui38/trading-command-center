@@ -43,6 +43,19 @@ CONFIG_PATH = os.path.join(HUB_DIR, "hub_config.json")
 IS_WIN = os.name == "nt"
 os.makedirs(LOG_DIR, exist_ok=True)
 
+# When started hidden there may be no usable stdout/stderr: send them (and any
+# hard-crash traceback) to logs/hub.console.log so nothing ever dies silently.
+try:
+    _console = open(os.path.join(LOG_DIR, "hub.console.log"), "a", encoding="utf-8", buffering=1)
+    if sys.stdout is None or not getattr(sys.stdout, "isatty", lambda: False)():
+        sys.stdout = _console
+    if sys.stderr is None or not getattr(sys.stderr, "isatty", lambda: False)():
+        sys.stderr = _console
+    import faulthandler
+    faulthandler.enable(_console)
+except Exception:
+    pass
+
 DEFAULT_CONFIG = {
     "port": 7777,
     "app_url": "https://adeelsiddiqui38.github.io/trading-command-center/index.html",
@@ -203,6 +216,28 @@ def kill_tree(pid):
         pass
 
 
+def kill_port_owners(ports):
+    """Free ports our services need (leftovers from old windows / a previous hub)."""
+    pids = set()
+    for port in ports:
+        try:
+            if IS_WIN:
+                r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                                    f"(Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue).OwningProcess"],
+                                   capture_output=True, text=True, timeout=30, creationflags=0x08000000)
+            else:
+                r = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True, timeout=15)
+            for tok in r.stdout.split():
+                if tok.strip().isdigit() and int(tok) not in (0, 4, os.getpid()):
+                    pids.add(int(tok))
+        except Exception:
+            pass
+    for pid in pids:
+        hub_log(f"freeing port held by stray process {pid}")
+        kill_tree(pid)
+    return len(pids)
+
+
 def kill_strays(patterns, protect=()):
     me = os.getpid()
     procs = list_processes()
@@ -305,8 +340,9 @@ def hub_event(kind, text):
 # Services
 # ---------------------------------------------------------------------------
 class Service:
-    def __init__(self, name, label, cmd, cwd, stray_patterns, env=None, note=""):
+    def __init__(self, name, label, cmd, cwd, stray_patterns, env=None, note="", ports=()):
         self.name, self.label, self.cmd, self.cwd = name, label, cmd, cwd
+        self.ports = tuple(ports)
         self.stray_patterns, self.env, self.note = stray_patterns, env or {}, note
         self.proc = None
         self.status = "stopped"
@@ -445,7 +481,7 @@ def build_services():
                 [vibe_exe, "dev", "--frontend-dir", os.path.join(vibe, "frontend")], vibe,
                 [r"vibe-trading(\.exe)?\W+dev", r"cli\._legacy\s+serve", r"vite(\.js)?\W.*--port\s+5899",
                  r"npm-cli\.js.*run dev.*5899", r"npm(\.CMD)?\W+run dev -- --port 5899"],
-                note="research agent the equity bot asks for buy/sell/hold"),
+                note="research agent the equity bot asks for buy/sell/hold", ports=(8899, 5899)),
         Service("telegram", "Telegram listener", [py, "telegram_listener.py"], bot,
                 [r"telegram_listener\.py"], note="reads your channel(s) for $TICKERs + position screenshots"),
         Service("paperbot", "Equity paper bot (AI)",
@@ -458,7 +494,8 @@ def build_services():
     if os.path.isdir(sig):
         node = shutil.which("node") or "node"
         svcs.append(Service("signal_agent", "Signal agent (:3000)", [node, "server.js"], sig,
-                            [r"trading-signal-agent.*server\.js"], note="multi-channel signal voting (mock mode)"))
+                            [r"trading-signal-agent.*server\.js"], note="multi-channel signal voting (mock mode)",
+                            ports=(3000,)))
     return svcs
 
 
@@ -753,6 +790,7 @@ def main():
     patterns = [p for s in SERVICES for p in s.stray_patterns]
     patterns += [r"-NoExit.*(telegram_listener|paperbot|leverage_bot|vibe-trading|server\.js)"]
     n = kill_strays(patterns)
+    n += kill_port_owners([p for s in SERVICES for p in s.ports])
     if n:
         time.sleep(2)
 
@@ -802,4 +840,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        hub_log("HUB CRASHED:\n" + traceback.format_exc())
+        raise

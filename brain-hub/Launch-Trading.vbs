@@ -17,7 +17,14 @@ If fso.FolderExists(fso.BuildPath(repoDir, ".git")) Then
   sh.Run cmd, 0, True
 End If
 
-pyw = "pythonw"
-If fso.FileExists("C:\Python314\pythonw.exe") Then pyw = "C:\Python314\pythonw.exe"
+' Hidden python.exe (window style 0) rather than pythonw: same invisibility, but the
+' hub keeps a real (hidden) console so nothing it runs can fail silently.
+Dim py, logf
+py = "python"
+If fso.FileExists("C:\Python314\python.exe") Then py = "C:\Python314\python.exe"
+If Not fso.FolderExists(fso.BuildPath(hubDir, "logs")) Then fso.CreateFolder fso.BuildPath(hubDir, "logs")
+Set logf = fso.OpenTextFile(fso.BuildPath(hubDir, "logs\launch.log"), 8, True)
+logf.WriteLine Now & "  launch: " & py & " hub.py"
+logf.Close
 sh.CurrentDirectory = hubDir
-sh.Run """" & pyw & """ """ & fso.BuildPath(hubDir, "hub.py") & """", 0, False
+sh.Run """" & py & """ """ & fso.BuildPath(hubDir, "hub.py") & """", 0, False
