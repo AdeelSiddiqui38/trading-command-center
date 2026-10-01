@@ -82,7 +82,7 @@ if(Test-Path (Join-Path $REPO '.git')){
 
 # ---------- 5. hub ----------
 Say "`n[5] Installing hub -> $HUB"
-foreach($f in 'hub.py','Launch-Trading.vbs'){
+foreach($f in 'hub.py','prices.py','Launch-Trading.vbs'){
   $s = Join-Path $REPO "brain-hub\$f"
   if(Test-Path $s){ Copy-Item $s (Join-Path $HUB $f) -Force; Say "    $f" } else { Say "    !! missing $s" }
 }

@@ -13,7 +13,7 @@ repoDir = fso.BuildPath(fso.GetParentFolderName(hubDir), "trading-command-center
 If fso.FolderExists(fso.BuildPath(repoDir, ".git")) Then
   cmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command ""$ErrorActionPreference='SilentlyContinue'; " & _
         "$j = Start-Job { git -C '" & repoDir & "' pull --ff-only -q }; Wait-Job $j -Timeout 15 | Out-Null; " & _
-        "foreach($f in 'hub.py','Launch-Trading.vbs'){ $src = Join-Path '" & repoDir & "' ('brain-hub\' + $f); if (Test-Path $src) { Copy-Item $src (Join-Path '" & hubDir & "' $f) -Force } }"""
+        "foreach($f in 'hub.py','prices.py','Launch-Trading.vbs'){ $src = Join-Path '" & repoDir & "' ('brain-hub\' + $f); if (Test-Path $src) { Copy-Item $src (Join-Path '" & hubDir & "' $f) -Force } }"""
   sh.Run cmd, 0, True
 End If
 

@@ -45,6 +45,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 # When started hidden there may be no usable stdout/stderr: send them (and any
 # hard-crash traceback) to logs/hub.console.log so nothing ever dies silently.
+_console = sys.__stderr__
 try:
     _console = open(os.path.join(LOG_DIR, "hub.console.log"), "a", encoding="utf-8", buffering=1)
     if sys.stdout is None or not getattr(sys.stdout, "isatty", lambda: False)():
@@ -491,6 +492,9 @@ def build_services():
         Service("leverage", "Crypto leverage paper bot", [py, "leverage_bot.py"], bot,
                 [r"leverage_bot\.py"], note="opens perps from Telegram screenshots, checks every 30s"),
     ]
+    svcs.append(Service("prices", "Live price feed (yfinance / MEXC)",
+                        [py, os.path.join(HUB_DIR, "prices.py"), bot], HUB_DIR, [r"trading-hub.prices\.py"],
+                        note="live prices for open positions"))
     if os.path.isdir(sig):
         node = shutil.which("node") or "node"
         svcs.append(Service("signal_agent", "Signal agent (:3000)", [node, "server.js"], sig,
@@ -517,42 +521,16 @@ def read_json(path, default):
         return default
 
 
-def equity_price_loop():
-    try:
-        import yfinance as yf
-    except Exception:
-        hub_log("yfinance not available — equity positions shown at cost")
-        return
-    while True:
-        pf = read_json(os.path.join(CFG["bot_dir"], "portfolio.json"), {})
-        for t in list((pf.get("positions") or {}).keys()):
-            try:
-                fi = yf.Ticker(t).fast_info
-                p = getattr(fi, "last_price", None) or fi.get("lastPrice")
-                if p:
-                    EQ_PRICES[t] = float(p)
-            except Exception:
-                pass
-        PRICE_META["eq_at"] = datetime.now(timezone.utc).isoformat()
-        time.sleep(30)
+PRICES_PATH = os.path.join(LOG_DIR, "prices.json")
 
 
-def crypto_price_loop():
-    try:
-        import ccxt
-        ex = ccxt.mexc()
-    except Exception:
-        hub_log("ccxt not available — crypto positions shown at entry price")
-        return
-    while True:
-        pf = read_json(os.path.join(CFG["bot_dir"], "leverage_portfolio.json"), {})
-        for sym in {p.get("symbol") for p in pf.get("open_positions") or [] if p.get("symbol")}:
-            try:
-                CRYPTO_PRICES[sym] = float(ex.fetch_ticker(sym)["last"])
-            except Exception:
-                pass
-        PRICE_META["crypto_at"] = datetime.now(timezone.utc).isoformat()
-        time.sleep(5)
+def refresh_prices():
+    """Prices come from prices.py (its own process) so nothing can stall the hub."""
+    st = read_json(PRICES_PATH, {}) or {}
+    EQ_PRICES.update(st.get("equity") or {})
+    CRYPTO_PRICES.update(st.get("crypto") or {})
+    PRICE_META["eq_at"] = st.get("eq_at")
+    PRICE_META["crypto_at"] = st.get("crypto_at")
 
 
 # ---------------------------------------------------------------------------
@@ -630,6 +608,7 @@ STARTED = now_iso()
 
 
 def full_state():
+    refresh_prices()
     with FEED_LOCK:
         feed = sorted(FEED, key=lambda e: e["ts"], reverse=True)[:400]
     return {"hub": {"version": 1, "started": STARTED, "root": BRAIN_DIR, "logs": LOG_DIR},
@@ -810,11 +789,14 @@ def main():
         else:
             s.status = "stopped" if s.available() else "missing"
 
-    threading.Thread(target=equity_price_loop, daemon=True).start()
-    threading.Thread(target=crypto_price_loop, daemon=True).start()
 
     def supervisor():
+        import faulthandler
         while True:
+            try:
+                faulthandler.dump_traceback_later(90, repeat=False, file=_console, exit=False)
+            except Exception:
+                pass
             for s in SERVICES:
                 try:
                     s.check()
