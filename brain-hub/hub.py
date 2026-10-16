@@ -69,7 +69,7 @@ DEFAULT_CONFIG = {
     "auto_sync": True,
     "repo_url": "https://github.com/AdeelSiddiqui38/trading-command-center",
     "autostart": {"vibe": True, "telegram": True, "paperbot": True, "leverage": True, "signal_agent": True,
-                  "momentum": True},
+                  "momentum": True, "tactical": True},
 }
 
 
@@ -308,6 +308,14 @@ def classify(src, msg):
         if m.startswith("HALT") or "failed" in m.lower():
             return "error"
         return "info"
+    if src == "tactical":
+        if m.startswith("EQUITY"):
+            return None  # daily mark-to-market line
+        if m.startswith("REBALANCE"):
+            return "open"
+        if "failed" in m.lower():
+            return "error"
+        return "info"
     return "info"
 
 
@@ -510,6 +518,10 @@ def build_services():
         svcs.append(Service("momentum", "Small-cap momentum paper bot", [py, "momentum_bot.py"], bot,
                             [r"momentum_bot\.py"],
                             note="Gap & Go paper trades; scans 07:00-11:30 ET, entries only once the market is open"))
+    if os.path.exists(os.path.join(bot, "tactical_bot.py")):
+        svcs.append(Service("tactical", "Tactical 5-asset trend sleeve (paper)", [py, "tactical_bot.py"], bot,
+                            [r"tactical_bot\.py"],
+                            note="slow monthly paper allocation: SPY/EFA/IEF/GLD/VNQ above their 10-month average, else cash fund"))
     svcs.append(Service("prices", "Live price feed (yfinance / MEXC)",
                         [py, os.path.join(HUB_DIR, "prices.py"), bot], HUB_DIR, [r"trading-hub.prices\.py"],
                         note="live prices for open positions"))
@@ -917,7 +929,8 @@ def main():
     followers = [LogFollower(os.path.join(CFG["bot_dir"], "paperbot.log"), "equity"),
                  LogFollower(os.path.join(CFG["bot_dir"], "leverage_bot.log"), "crypto"),
                  LogFollower(os.path.join(CFG["bot_dir"], "telegram_listener.log"), "telegram"),
-                 LogFollower(os.path.join(CFG["bot_dir"], "momentum_bot.log"), "momentum")]
+                 LogFollower(os.path.join(CFG["bot_dir"], "momentum_bot.log"), "momentum"),
+                 LogFollower(os.path.join(CFG["bot_dir"], "tactical_bot.log"), "tactical")]
     for f in followers:
         f.poll()
 
