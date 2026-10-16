@@ -20,12 +20,20 @@ import io
 import json
 import os
 import re
+import sqlite3
+import time
+import traceback
 from datetime import datetime, timezone
 
 from telethon import TelegramClient, events
 
 import telegram_core as core          # original file: API_ID, API_HASH, CHANNELS, helpers
 import image_signal_parser
+
+try:                                  # optional: not present on every machine this file is synced to
+    import singleton
+except ImportError:
+    singleton = None
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(BASE_DIR, "telegram_state.json")
@@ -214,11 +222,8 @@ async def catch_up(client, state):
             log(f"[{ch}] catch-up failed: {e}")
 
 
-async def main():
-    if not core.API_ID or not core.API_HASH:
-        raise SystemExit("Set API_ID and API_HASH in telegram_core.py")
+async def run_once(state):
     client = TelegramClient(core.SESSION_PATH, core.API_ID, core.API_HASH)
-    state = load_state()
 
     @client.on(events.NewMessage(chats=core.CHANNELS))
     async def on_new(event):
@@ -228,10 +233,43 @@ async def main():
         state[str(name)] = max(int(state.get(str(name), 0)), event.message.id)
         save_state(state)
 
-    await client.start()
-    log(f"Listening on channels: {core.CHANNELS} (text + voice + photos)")
-    await catch_up(client, state)
-    await client.run_until_disconnected()
+    try:
+        await client.start()
+        log(f"Listening on channels: {core.CHANNELS} (text + voice + photos)")
+        await catch_up(client, state)
+        await client.run_until_disconnected()
+    finally:
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+
+
+async def main():
+    if not core.API_ID or not core.API_HASH:
+        raise SystemExit("Set API_ID and API_HASH in telegram_core.py")
+    if singleton:
+        singleton.guard("telegram_listener", log)
+    state = load_state()
+
+    # Supervisor: a locked session database or any other crash is logged with a
+    # traceback and retried with back-off instead of killing the process (the
+    # hub gives up on a service after 5 quick crashes).
+    delay = 5
+    while True:
+        started = time.time()
+        try:
+            await run_once(state)
+            log("connection closed - reconnecting")
+        except sqlite3.OperationalError as e:
+            log(f"session database error ({e}) - another process may be using "
+                f"telegram_session.session; retrying in {delay}s")
+        except Exception:
+            log("listener crashed, will retry:\n" + traceback.format_exc())
+        if time.time() - started > 120:
+            delay = 5
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, 120)
 
 
 if __name__ == "__main__":

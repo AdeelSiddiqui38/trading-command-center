@@ -758,15 +758,37 @@ function fmtVol(v){ return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(
 /* ---------- Pre-market gap scanner (Finnhub quotes vs prev close) ---------- */
 let scanMode = 'av';
 let pmGaps = [];
+let pmSource = '';   // 'yahoo' (via local hub, real pre-market prices) or 'finnhub' (no pre-market prices on the free tier)
 function setScanMode(m){
   scanMode = m;
   document.getElementById('scanModeAV').className = 'mini'+(m==='av'?' on':'');
   document.getElementById('scanModePM').className = 'mini'+(m==='pm'?' on':'');
   if(m==='pm') scanPremarket(); else renderGainers();
 }
+/* Pre-market movers from Yahoo via the local trading hub (no key). Finnhub's free /quote returns the
+   last REGULAR close in pre-market, so its "gap" is really yesterday's move. */
+async function hubScan(){
+  try{
+    const syms = LS.wl.map(w=>w.sym).slice(0,15).join(',');
+    const r = await fetch(HUB+'/api/scan'+(syms?('?symbols='+encodeURIComponent(syms)):''), {cache:'no-store', signal:AbortSignal.timeout(60000)});
+    const j = await r.json();
+    return (j && Array.isArray(j.rows) && j.rows.length) ? j : null;
+  }catch(e){ return null; }
+}
 async function scanPremarket(){
   const k=LS.k;
-  if(!k.fh){ setStatus('⚠ Pre-market scan needs your Finnhub key'); return; }
+  setStatus('Scanning pre-market movers…', true);
+  const hs = await hubScan();
+  if(hs){
+    pmGaps = hs.rows.map(r=>({sym:cleanSym(r.sym), px:r.px, pc:r.pc, gap:r.gap, age:r.age_min}))
+      .filter(g=>isFinite(g.gap) && Math.abs(g.gap)>=1).sort((a,b)=>b.gap-a.gap);
+    pmSource = 'yahoo';
+    renderPremarket();
+    checkAlertsAll();
+    setStatus('Pre-market scan done — '+pmGaps.length+' gapping ≥1% (Yahoo via hub)');
+    return;
+  }
+  if(!k.fh){ setStatus('⚠ Pre-market scan: start the trading hub (Desktop icon) or add a Finnhub key'); return; }
   const uni = [...new Set([
     ...JSON.parse(localStorage.getItem('tcc_universe')||'[]'),
     ...LS.wl.map(w=>w.sym)
@@ -787,6 +809,7 @@ async function scanPremarket(){
     }catch(e){}
   }));
   pmGaps = out.filter(g=>Math.abs(g.gap)>=1).sort((a,b)=>b.gap-a.gap);
+  pmSource = 'finnhub';
   renderPremarket();
   checkAlertsAll();
   setStatus('Pre-market scan done — '+pmGaps.length+' gapping ≥1%');
@@ -795,10 +818,15 @@ function renderPremarket(){
   const tb=document.getElementById('gapBody');
   document.getElementById('gapCount').textContent=pmGaps.length;
   if(!pmGaps.length){ tb.innerHTML='<div class="empty">Nothing gapping ≥1% in the cached universe right now.</div>'; return; }
-  tb.innerHTML = `<table><thead><tr><th>Ticker</th><th>Pre-Mkt</th><th>Prev Close</th><th>Gap %</th><th></th></tr></thead><tbody>`+
+  const banner = pmSource==='yahoo'
+    ? '<div style="font-size:11px;color:var(--dim);padding:4px 8px">Source: Yahoo via hub — real pre-market prices (hover a price for its age). Universe = recent movers + your watchlist; no pre-market volume.</div>'
+    : pmSource==='finnhub'
+    ? '<div style="font-size:11px;color:#f59e0b;padding:4px 8px">⚠ Finnhub free quotes have no pre-market prices — "gap" here is vs the last regular close. Start the hub for real pre-market gaps.</div>'
+    : '';
+  tb.innerHTML = banner + `<table><thead><tr><th>Ticker</th><th>Pre-Mkt</th><th>Prev Close</th><th>Gap %</th><th></th></tr></thead><tbody>`+
     pmGaps.map(g=>`<tr class="row" onclick="selectSym('${g.sym}')">
       <td class="tk">${g.sym}${g.gap>=10 && g.px>=1 && g.px<=20?' ⭐':''}</td>
-      <td>$${g.px.toFixed(2)}</td>
+      <td${g.age!=null?` title="last trade ${g.age} min ago"`:''}>$${g.px.toFixed(2)}</td>
       <td>$${g.pc.toFixed(2)}</td>
       <td class="${g.gap>=0?'up':'dn'}">${g.gap>=0?'+':''}${g.gap.toFixed(1)}%</td>
       <td><button class="addbtn" onclick="event.stopPropagation();addTicker('${g.sym}')">+ watch</button></td>
@@ -1409,11 +1437,9 @@ setInterval(()=>{
   if(now-lastAutoScan>=a.int*60000){
     lastAutoScan=now;
     const s=document.getElementById('session').textContent;
-    if(LS.k.fh){
-      if(s==='PRE-MARKET' && scanMode!=='pm') setScanMode('pm'); // switches + scans
-      else scanPremarket(); // gap re-scan of universe+watchlist (works all day)
-      loadNews();
-    }
+    if(s==='PRE-MARKET' && scanMode!=='pm') setScanMode('pm'); // switches + scans
+    else scanPremarket(); // gap re-scan of universe+watchlist (works all day; Yahoo via hub needs no key)
+    if(LS.k.fh) loadNews();
   }
 }, 15000);
 paintAutoBadge();

@@ -35,7 +35,7 @@ import zipfile
 from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 HUB_DIR = os.path.dirname(os.path.abspath(__file__))
 BRAIN_DIR = os.path.dirname(HUB_DIR)
@@ -770,6 +770,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(full_state())
         if path == "/api/ping":
             return self._json({"ok": True, "hub": "brain-trading"})
+        if path == "/api/scan":
+            # Pre-market movers from Yahoo (no API key); Finnhub's free quote has no pre-market prices.
+            try:
+                from yahoo_scan import yahoo_scan
+            except Exception as e:
+                return self._json({"error": f"yahoo_scan.py not available ({type(e).__name__})"})
+            extra = parse_qs(urlparse(self.path).query).get("symbols", [""])[0].split(",")
+            return self._json(yahoo_scan(extra))
         # Local copy of the Command Center (handy offline); the installed app uses GitHub Pages.
         rel = "index.html" if path in ("/", "") else path.lstrip("/")
         fp = os.path.normpath(os.path.join(STATIC_DIR, rel))
