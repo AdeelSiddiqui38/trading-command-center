@@ -68,7 +68,8 @@ DEFAULT_CONFIG = {
     "equity_interval_minutes": 30,
     "auto_sync": True,
     "repo_url": "https://github.com/AdeelSiddiqui38/trading-command-center",
-    "autostart": {"vibe": True, "telegram": True, "paperbot": True, "leverage": True, "signal_agent": True},
+    "autostart": {"vibe": True, "telegram": True, "paperbot": True, "leverage": True, "signal_agent": True,
+                  "momentum": True},
 }
 
 
@@ -297,6 +298,16 @@ def classify(src, msg):
         if "error" in m.lower():
             return "error"
         return "info"
+    if src == "momentum":
+        if m.startswith("scan:"):
+            return None  # 5-minute heartbeat; service status shows it is alive
+        if m.startswith("OPEN "):
+            return "open"
+        if m.startswith("CLOSE "):
+            return "exit"
+        if m.startswith("HALT") or "failed" in m.lower():
+            return "error"
+        return "info"
     return "info"
 
 
@@ -495,6 +506,10 @@ def build_services():
         Service("leverage", "Crypto leverage paper bot", [py, "leverage_bot.py"], bot,
                 [r"leverage_bot\.py"], note="opens perps from Telegram screenshots, checks every 30s"),
     ]
+    if os.path.exists(os.path.join(bot, "momentum_bot.py")):
+        svcs.append(Service("momentum", "Small-cap momentum paper bot", [py, "momentum_bot.py"], bot,
+                            [r"momentum_bot\.py"],
+                            note="Gap & Go paper trades; scans 07:00-11:30 ET, entries only once the market is open"))
     svcs.append(Service("prices", "Live price feed (yfinance / MEXC)",
                         [py, os.path.join(HUB_DIR, "prices.py"), bot], HUB_DIR, [r"trading-hub.prices\.py"],
                         note="live prices for open positions"))
@@ -901,7 +916,8 @@ def main():
     # 2) follow the bots' own logs for the feed (full history first, then live)
     followers = [LogFollower(os.path.join(CFG["bot_dir"], "paperbot.log"), "equity"),
                  LogFollower(os.path.join(CFG["bot_dir"], "leverage_bot.log"), "crypto"),
-                 LogFollower(os.path.join(CFG["bot_dir"], "telegram_listener.log"), "telegram")]
+                 LogFollower(os.path.join(CFG["bot_dir"], "telegram_listener.log"), "telegram"),
+                 LogFollower(os.path.join(CFG["bot_dir"], "momentum_bot.log"), "momentum")]
     for f in followers:
         f.poll()
 
