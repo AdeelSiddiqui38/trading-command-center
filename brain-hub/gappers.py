@@ -26,7 +26,7 @@ OUT = os.path.join(HUB_DIR, "logs", "gappers.json")
 CONFIG_PATH = os.path.join(HUB_DIR, "hub_config.json")
 
 DEFAULTS = {"price_min": 2.0, "price_max": 20.0, "min_change": 10.0, "min_rvol": 5.0,
-            "max_float_m": 20.0, "max_rows": 25, "scan_seconds": 60, "idle_scan_seconds": 600}
+            "max_float_m": 20.0, "feed_paperbot": 1, "feed_min_score": 4, "feed_max_per_day": 3, "max_rows": 25, "scan_seconds": 60, "idle_scan_seconds": 600}
 _float_cache = {}   # ticker -> (float_shares or None, fetched_at)
 _news_cache = {}    # ticker -> (has_news, fetched_at)
 
@@ -191,6 +191,51 @@ def scan(yf, cfg):
     return session, rows[: int(cfg["max_rows"])]
 
 
+def feed_paperbot(rows, session, cfg):
+    """Hand the strongest gappers to the equity paper bot's AI watchlist (candidates.json).
+    Paper only; the bot's own AI still decides buy/hold. Max N new tickers per day."""
+    if not cfg.get("feed_paperbot") or session not in ("PRE", "REG"):
+        return []
+    hub_cfg = read_json(CONFIG_PATH, {}) or {}
+    bot_dir = hub_cfg.get("bot_dir") or os.path.join(os.path.dirname(HUB_DIR), "trading-paperbot")
+    path = os.path.join(bot_dir, "candidates.json")
+    if not os.path.isdir(bot_dir):
+        return []
+    cands = read_json(path, [])
+    if not isinstance(cands, list):
+        return []
+    today = datetime.now().strftime("%Y-%m-%d")
+    done = read_json(os.path.join(HUB_DIR, "logs", "gappers_fed.json"), {}) or {}
+    if done.get("day") != today:
+        done = {"day": today, "tickers": []}
+    added = []
+    for r in rows:
+        if len(done["tickers"]) >= int(cfg["feed_max_per_day"]):
+            break
+        if r["score"] < cfg["feed_min_score"] or not (r.get("pillars") or {}).get("change") or r["ticker"] in done["tickers"]:
+            continue
+        cands.append({"ticker": r["ticker"], "channel": "gappers", "consumed": False,
+                      "received_at": datetime.now(timezone.utc).isoformat(),
+                      "text": f"gapper {r['score']}/5: +{r['chg']:.1f}% RVOL {r['rvol'] or 0:.1f}x float {r['float_m']}M"})
+        done["tickers"].append(r["ticker"])
+        added.append(r["ticker"])
+    if added:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cands, f, indent=2)
+        os.replace(tmp, path)
+        write_out_json(os.path.join(HUB_DIR, "logs", "gappers_fed.json"), done)
+        print("fed paper bot:", added, flush=True)
+    return added
+
+
+def write_out_json(path, obj):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(obj, f)
+    os.replace(tmp, path)
+
+
 def main():
     try:
         import yfinance as yf
@@ -204,6 +249,10 @@ def main():
         state = {"at": datetime.now(timezone.utc).isoformat(), "criteria": cfg, "rows": [], "session": None, "error": None}
         try:
             state["session"], state["rows"] = scan(yf, cfg)
+            try:
+                state["fed"] = feed_paperbot(state["rows"], state["session"], cfg)
+            except Exception as e:
+                print("feed failed:", e, flush=True)
         except Exception as e:
             state["error"] = f"{type(e).__name__}: {e}"[:200]
             print("scan failed:", state["error"], flush=True)
