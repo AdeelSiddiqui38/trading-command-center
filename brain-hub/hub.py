@@ -68,8 +68,8 @@ DEFAULT_CONFIG = {
     "equity_interval_minutes": 30,
     "auto_sync": True,
     "repo_url": "https://github.com/AdeelSiddiqui38/trading-command-center",
-    "autostart": {"vibe": True, "telegram": True, "paperbot": True, "leverage": True, "signal_agent": True,
-                  "momentum": True, "tactical": True},
+    "autostart": {"gappers": True, "vibe": True, "telegram": True, "paperbot": True, "leverage": True,
+                  "signal_agent": True, "momentum": True, "tactical": True},
 }
 
 
@@ -525,6 +525,9 @@ def build_services():
     svcs.append(Service("prices", "Live price feed (yfinance / MEXC)",
                         [py, os.path.join(HUB_DIR, "prices.py"), bot], HUB_DIR, [r"trading-hub.prices\.py"],
                         note="live prices for open positions"))
+    svcs.append(Service("gappers", "Gappers scanner (Ross Cameron 5 pillars)",
+                        [py, os.path.join(HUB_DIR, "gappers.py")], HUB_DIR, [r"trading-hub.gappers\.py"],
+                        note="read-only scan of US small-cap gappers (Yahoo data) - never places trades"))
     if os.path.isdir(sig):
         node = shutil.which("node") or "node"
         svcs.append(Service("signal_agent", "Signal agent (:3000)", [node, "server.js"], sig,
@@ -628,6 +631,10 @@ def leverage_state():
             "losses": len(closed) - wins - liqs, "liquidations": liqs, "prices_at": PRICE_META["crypto_at"]}
 
 
+def gappers_state():
+    return read_json(os.path.join(LOG_DIR, "gappers.json"), {"rows": [], "error": "scanner not started yet"}) or {"rows": []}
+
+
 def signals_state():
     bot = CFG["bot_dir"]
     return {"tickers": (read_json(os.path.join(bot, "candidates.json"), []) or [])[-60:],
@@ -726,6 +733,11 @@ def sync_repo():
             if "prices" in SVC:
                 threading.Thread(target=lambda: (SVC["prices"].stop(), time.sleep(1), SVC["prices"].start(manual=True)),
                                  daemon=True).start()
+        if _copy_if_changed(os.path.join(src, "gappers.py"), os.path.join(HUB_DIR, "gappers.py")):
+            changed.append("gappers.py")
+            if "gappers" in SVC:
+                threading.Thread(target=lambda: (SVC["gappers"].stop(), time.sleep(1), SVC["gappers"].start(manual=True)),
+                                 daemon=True).start()
         bot = CFG["bot_dir"]
         if os.path.exists(os.path.join(bot, "telegram_core.py")) and \
                 _copy_if_changed(os.path.join(src, "telegram_listener_v2.py"), os.path.join(bot, "telegram_listener.py")):
@@ -755,6 +767,7 @@ def full_state():
     return {"hub": {"version": 1, "started": STARTED, "root": BRAIN_DIR, "logs": LOG_DIR, "sync": SYNC},
             "services": [s.info() for s in SERVICES],
             "equity": equity_state(), "leverage": leverage_state(), "signals": signals_state(),
+            "gappers": gappers_state(),
             "feed": feed, "market": {"us_open": us_market_open()}}
 
 
