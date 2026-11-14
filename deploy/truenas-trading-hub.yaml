@@ -38,7 +38,7 @@ services:
         VIBE="vibe-trading-ai==0.1.15"
         if [ "$$(cat /venv/.req-vibe 2>/dev/null)" != "$$VIBE" ]; then pip install -q $$VIBE && echo "$$VIBE" > /venv/.req-vibe || echo "Vibe-Trading install failed (equity bot only)"; fi
         cd /tcc/trading-hub
-        for f in hub.py prices.py gappers.py yahoo_scan.py; do
+        for f in hub.py prices.py gappers.py yahoo_scan.py trader_news.py; do
           python -c "import sys,urllib.request; d=urllib.request.urlopen('https://raw.githubusercontent.com/AdeelSiddiqui38/trading-command-center/main/brain-hub/'+sys.argv[1], timeout=30).read(); open(sys.argv[1]+'.new','wb').write(d)" $$f && mv -f $$f.new $$f || echo "kept local $$f"
         done
         exec python hub.py --no-open
