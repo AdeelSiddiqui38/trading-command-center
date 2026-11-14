@@ -37,6 +37,8 @@ except ImportError:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(BASE_DIR, "telegram_state.json")
+FX_JOURNAL_PATH = os.path.join(BASE_DIR, "fx_signals.json")   # forex/gold calls: journal only, never traded
+KIND = {}                         # channel name -> crypto | fx | auto (filled when channels are resolved)
 MAX_SIGNAL_AGE_MIN = 30          # only trade calls fresher than this
 CATCHUP_LIMIT = 40               # messages per channel to look back on start
 DEFAULT_LEVERAGE = 10            # used when a call gives no leverage (flagged in the log)
@@ -63,6 +65,24 @@ Commentary, market views without a clear position, closing/updating an old trade
 or general talk => is_trade_signal false (still give the summary)."""
 
 
+FX_PROMPT = """You read posts from a Telegram trading channel (forex, gold, indices, crypto or stocks).
+The text may be English, Urdu or Hindi (or a mix) and may be a voice-note transcript.
+Decide whether it contains a concrete NEW trade call (a position to open) and which market it is.
+
+Respond with ONLY one JSON object, no markdown:
+{"is_trade_signal": true|false,
+ "asset_class": "fx"|"gold"|"index"|"crypto"|"stock"|"",
+ "symbol": "<e.g. XAUUSD, EURUSD, US30, BTC, AAPL or empty>",
+ "side": "long"|"short"|"",
+ "leverage": <integer or null>,
+ "entry": "<price/zone or empty>",
+ "take_profit": "<targets or empty>",
+ "stop_loss": "<price or empty>",
+ "summary": "<one short English sentence of what was said>"}
+
+Adverts, testimonials, results screenshots, commentary or closing an old trade => is_trade_signal false."""
+
+
 # ---------------------------------------------------------------- helpers
 def _openai():
     return image_signal_parser._client_lazy()
@@ -75,10 +95,10 @@ def transcribe(audio_bytes):
     return (r.text or "").strip()
 
 
-def extract(text):
+def extract(text, prompt=None):
     r = _openai().chat.completions.create(
         model="gpt-4.1-mini",
-        messages=[{"role": "system", "content": EXTRACT_PROMPT},
+        messages=[{"role": "system", "content": prompt or EXTRACT_PROMPT},
                   {"role": "user", "content": text[:6000]}],
         max_tokens=300,
         response_format={"type": "json_object"},
@@ -87,6 +107,25 @@ def extract(text):
         return json.loads(r.choices[0].message.content)
     except Exception:
         return {"is_trade_signal": False, "summary": text[:120]}
+
+
+def journal_fx(res, channel_name, source, tradeable):
+    """Forex/gold/index calls are journaled only (no bot paper-trades them yet)."""
+    row = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"), "channel": channel_name, "source": source,
+           "fresh": bool(tradeable)}
+    row.update({k: res.get(k) for k in ("asset_class", "symbol", "side", "entry", "take_profit", "stop_loss", "summary")})
+    try:
+        with open(FX_JOURNAL_PATH, "r", encoding="utf-8") as f:
+            rows = json.load(f)
+    except Exception:
+        rows = []
+    rows.append(row)
+    tmp = FX_JOURNAL_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(rows[-2000:], f, indent=2)
+    os.replace(tmp, FX_JOURNAL_PATH)
+    log(f"[{channel_name}] FX/GOLD SIGNAL (journal only, {source}): {str(res.get('side') or '').upper()} "
+        f"{res.get('symbol')} entry={res.get('entry')} tp={res.get('take_profit')} sl={res.get('stop_loss')}")
 
 
 def norm_symbol(sym):
@@ -137,6 +176,12 @@ async def handle(msg, channel_name, live):
             return
 
         # ---- photos (position screenshots)
+        if msg.photo and KIND.get(channel_name, "crypto") == "fx":
+            if text:
+                await act_on_text(text, channel_name, tradeable, source="caption")
+            else:
+                log(f"[{channel_name}] photo (fx channel, not parsed){tag}")
+            return
         if msg.photo:
             data = await msg.download_media(bytes)
             res = image_signal_parser.extract_signal_from_image(data)
@@ -150,6 +195,12 @@ async def handle(msg, channel_name, live):
             return
 
         # ---- text
+        if text and KIND.get(channel_name, "crypto") != "crypto":
+            if TRADEY_RE.search(text) or TICKER_RE.search(text):
+                await act_on_text(text, channel_name, tradeable, source="text")
+            else:
+                log(f"[{channel_name}] message: {text[:100]}{tag}")
+            return
         if text:
             tickers = TICKER_RE.findall(text)
             for t in tickers:
@@ -169,6 +220,23 @@ async def handle(msg, channel_name, live):
 
 async def act_on_text(text, channel_name, tradeable, source):
     if not text:
+        return
+    kind = KIND.get(channel_name, "crypto")
+    if kind != "crypto":
+        res = extract(text, FX_PROMPT)
+        if not res.get("is_trade_signal"):
+            log(f"[{channel_name}] {source}: no new trade call - {(res.get('summary') or '')[:140]}")
+            return
+        ac = str(res.get("asset_class") or "").lower()
+        if kind == "fx" or ac in ("fx", "gold", "index", ""):
+            journal_fx(res, channel_name, source, tradeable)
+        elif ac == "stock":
+            sym = re.sub(r"[^A-Z]", "", str(res.get("symbol") or "").upper())
+            if sym and tradeable:
+                core.add_candidate(sym, channel_name, text)
+            log(f"[{channel_name}] candidate ({source}): {sym} -- {(res.get('summary') or '')[:80]}")
+        else:
+            record_leverage(res.get("symbol"), res.get("side"), res.get("leverage"), channel_name, tradeable, source)
         return
     res = extract(text)
     summary = res.get("summary") or ""
@@ -200,10 +268,35 @@ def record_leverage(symbol, side, leverage, channel_name, tradeable, source, not
         log(f"[{channel_name}] missed {source} call: {side.upper()} {sym} {lev}x{note}")
 
 
-async def catch_up(client, state):
-    for ch in core.CHANNELS:
+async def resolve_channels(client):
+    """Each configured channel by @username, or by (part of) its title among your chats. Returns entities."""
+    found = []
+    dialogs = None
+    for c in core.CHANNEL_CONFIG:
+        m, ent = c["match"], None
+        if re.fullmatch(r"@?[A-Za-z0-9_]{5,}", m):
+            try:
+                ent = await client.get_entity(m)
+            except Exception:
+                ent = None
+        if ent is None:
+            if dialogs is None:
+                dialogs = [d async for d in client.iter_dialogs()]
+            want = m.lower()
+            ent = next((d.entity for d in dialogs if want in (d.name or "").lower()), None)
+        if ent is None:
+            log(f"[{m}] channel not found in your chats - skipped")
+            continue
+        name = getattr(ent, "username", None) or getattr(ent, "title", m)
+        KIND[str(name)] = c.get("kind", "crypto")
+        found.append(ent)
+    return found
+
+
+async def catch_up(client, state, entities):
+    for entity in entities:
+        ch = getattr(entity, "title", "?")
         try:
-            entity = await client.get_entity(ch)
             name = getattr(entity, "username", None) or getattr(entity, "title", ch)
             last_id = int(state.get(str(name), 0))
             msgs = []
@@ -225,7 +318,6 @@ async def catch_up(client, state):
 async def run_once(state):
     client = TelegramClient(core.SESSION_PATH, core.API_ID, core.API_HASH)
 
-    @client.on(events.NewMessage(chats=core.CHANNELS))
     async def on_new(event):
         chat = await event.get_chat()
         name = getattr(chat, "username", None) or getattr(chat, "title", "unknown")
@@ -235,8 +327,10 @@ async def run_once(state):
 
     try:
         await client.start()
-        log(f"Listening on channels: {core.CHANNELS} (text + voice + photos)")
-        await catch_up(client, state)
+        entities = await resolve_channels(client)
+        client.add_event_handler(on_new, events.NewMessage(chats=entities))
+        log("Listening on channels: " + ", ".join(f"{n} ({k})" for n, k in KIND.items()) + " (text + voice + photos)")
+        await catch_up(client, state, entities)
         await client.run_until_disconnected()
     finally:
         try:

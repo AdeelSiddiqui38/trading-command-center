@@ -1495,7 +1495,8 @@ if('Notification' in window && Notification.permission==='default'){
    exposes their portfolios + logs on http://127.0.0.1:7777.
    Paper money only — nothing here touches a broker.
    ========================================================= */
-const HUB = (localStorage.getItem('tcc_hub') || 'http://127.0.0.1:7777').replace(/\/$/,'');
+// Opened through Sarah (https://sarah.<tailnet>/trading/) the hub is reached through Sarah's proxy; on the PC it is local.
+const HUB = (localStorage.getItem('tcc_hub') || (location.pathname.startsWith('/trading') ? location.origin + '/trading' : 'http://127.0.0.1:7777')).replace(/\/$/,'');
 let hubState = null, hubOk = null, feedFilter = localStorage.getItem('tcc_feedf') || 'trades';
 let lastEventKey = localStorage.getItem('tcc_lastevt') || '', hubTimer = null;
 const money = v => (v==null||isNaN(v)) ? '–' : (v<0?'-':'')+'$'+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
