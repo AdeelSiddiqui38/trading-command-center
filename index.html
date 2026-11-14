@@ -1592,7 +1592,7 @@ function renderBots(){
     <tr class="row" onclick="botOpenChart('${esc(r.ticker)}')"><td class="tk">${esc(r.ticker)}</td><td style="color:var(--dim)">${esc(r.name||'')}</td>
     <td>${px(r.price)}</td><td class="up" style="font-weight:800">+${(r.chg||0).toFixed(1)}%</td>
     <td>${r.rvol==null?'–':r.rvol.toFixed(1)+'x'}</td><td>${r.float_m==null?'–':r.float_m.toFixed(1)+'M'}</td>
-    <td>${r.news==null?'–':r.news?'📰':'—'}</td>
+    <td title="${r.news&&r.news.title?esc(r.news.title+' ('+(r.news.source||'')+(r.news.tags&&r.news.tags.length?', '+r.news.tags.join(', '):'')+')'):''}">${r.news==null?'–':r.news?(r.news.sec?'🏛':'📰')+(r.news.important?'❗':''):'—'}</td>
     <td title="price · change · rvol · float · news">${pill(p.price,'price')}${pill(p.change,'change')}${pill(p.rvol,'rvol')}${pill(p.float,'float')}${pill(p.news,'news')} <span style="color:var(--dim);font-size:10px">${r.score}/5</span></td></tr>`}).join('')}</table>`
     : '<div class="empty">'+(G.error?'Scanner: '+esc(G.error)+'<br>':'')+'No gappers yet. The scanner checks every minute from 4:00 AM–8:00 PM ET on weekdays (every 10 min otherwise).</div>';
 

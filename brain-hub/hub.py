@@ -734,6 +734,8 @@ def sync_repo():
             if "prices" in SVC:
                 threading.Thread(target=lambda: (SVC["prices"].stop(), time.sleep(1), SVC["prices"].start(manual=True)),
                                  daemon=True).start()
+        if _copy_if_changed(os.path.join(src, "trader_news.py"), os.path.join(HUB_DIR, "trader_news.py")):
+            changed.append("trader_news.py")
         if _copy_if_changed(os.path.join(src, "gappers.py"), os.path.join(HUB_DIR, "gappers.py")):
             changed.append("gappers.py")
             if "gappers" in SVC:

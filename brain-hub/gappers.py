@@ -10,7 +10,9 @@ Pillars (all adjustable in hub_config.json under "gappers"):
   change  up 10%+ (pre-market change while pre-market, otherwise day change)
   rvol    relative volume 5x+  (today's volume / 3-month average daily volume)
   float   under 20M shares
-  news    a headline in the last 24h
+  news    a headline or SEC 8-K filing in the last 24h (Yahoo headline RSS + SEC EDGAR, via the
+          vendored trader-news module from github.com/jakeschincariol/trader-skill; the SEC part
+          needs "sec_user_agent": "Your Name you@email" under "gappers" in hub_config.json)
 
 Quotes from Yahoo are delayed ~15 min on some venues; treat as a watchlist
 builder and confirm the setup on your broker / TradingView before acting.
@@ -28,7 +30,8 @@ CONFIG_PATH = os.path.join(HUB_DIR, "hub_config.json")
 DEFAULTS = {"price_min": 2.0, "price_max": 20.0, "min_change": 10.0, "min_rvol": 5.0,
             "max_float_m": 20.0, "feed_paperbot": 1, "feed_min_score": 4, "feed_max_per_day": 3, "max_rows": 25, "scan_seconds": 60, "idle_scan_seconds": 600}
 _float_cache = {}   # ticker -> (float_shares or None, fetched_at)
-_news_cache = {}    # ticker -> (has_news, fetched_at)
+_news_cache = {}    # ticker -> (news detail dict or None, fetched_at)
+NEWS_HOURS = 24
 
 
 def read_json(path, default):
@@ -42,8 +45,9 @@ def read_json(path, default):
 def load_cfg():
     cfg = dict(DEFAULTS)
     user = (read_json(CONFIG_PATH, {}) or {}).get("gappers") or {}
+    cfg["sec_user_agent"] = str(user.get("sec_user_agent") or "").strip()
     for k, v in user.items():
-        if k in cfg:
+        if k in cfg and k != "sec_user_agent":
             try:
                 cfg[k] = float(v)
             except Exception:
@@ -135,11 +139,35 @@ def get_float_m(yf, t):
     return val
 
 
-def get_news(yf, t):
+def get_news(yf, t, cfg=None):
+    """Freshest headline / 8-K in the last NEWS_HOURS for one ticker, or None.
+    Returns {"title", "time", "source", "tags", "sec": bool, "important": bool, "count"}."""
     hit = _news_cache.get(t)
     if hit and time.time() - hit[1] < 600:
         return hit[0]
-    has = False
+    detail = None
+    try:
+        import trader_news as tn
+        ua = tn.sec_user_agent((cfg or {}).get("sec_user_agent") or None, config="")
+        f = tn.Fetcher(sec_ua=ua, pause=0.2)
+        state = _news_cache.setdefault("_sec_state", ({}, 0))[0]
+        errors = []
+        items = tn.tag(tn.collect(f, {t: ""}, state, sec=bool(ua), errors=errors), {t: ""})
+        now = datetime.now(timezone.utc)
+        fresh = [i for i in tn.dedupe(items) if i["time"] and (now - i["time"]).total_seconds() < NEWS_HOURS * 3600]
+        fresh.sort(key=lambda i: i["time"], reverse=True)
+        if fresh:
+            top = next((i for i in fresh if i["kind"] == "filing"), fresh[0])
+            detail = {"title": top["title"][:160], "time": top["time"].isoformat(), "source": top["source"],
+                      "tags": top.get("tags") or [], "sec": any(i["kind"] == "filing" for i in fresh),
+                      "important": any(i.get("important") for i in fresh), "count": len(fresh)}
+    except Exception:
+        detail = _yf_news(yf, t)   # fall back to yfinance's own news list
+    _news_cache[t] = (detail, time.time())
+    return detail
+
+
+def _yf_news(yf, t):
     try:
         now = time.time()
         for n in (yf.Ticker(t).news or []):
@@ -149,13 +177,13 @@ def get_news(yf, t):
                 ts = datetime.fromisoformat(c["pubDate"].replace("Z", "+00:00")).timestamp()
             elif n.get("providerPublishTime"):
                 ts = float(n["providerPublishTime"])
-            if ts and now - ts < 86400:
-                has = True
-                break
+            if ts and now - ts < NEWS_HOURS * 3600:
+                return {"title": ((c or {}).get("title") or n.get("title") or "")[:160],
+                        "time": datetime.fromtimestamp(ts, timezone.utc).isoformat(), "source": "Yahoo",
+                        "tags": [], "sec": False, "important": False, "count": 1}
     except Exception:
-        has = False
-    _news_cache[t] = (has, time.time())
-    return has
+        pass
+    return None
 
 
 def fetch_candidates(yf, cfg, session):
@@ -182,7 +210,7 @@ def scan(yf, cfg):
     for r in rows[:30]:
         r["float_m"] = get_float_m(yf, r["ticker"])
         if r["chg"] >= cfg["min_change"]:
-            r["news"] = get_news(yf, r["ticker"])
+            r["news"] = get_news(yf, r["ticker"], cfg)
     for r in rows:
         p = pillars(r, cfg)
         r["pillars"] = p
@@ -246,7 +274,7 @@ def main():
     print("gappers scanner running", flush=True)
     while True:
         cfg = load_cfg()
-        state = {"at": datetime.now(timezone.utc).isoformat(), "criteria": cfg, "rows": [], "session": None, "error": None}
+        state = {"at": datetime.now(timezone.utc).isoformat(), "criteria": {k: v for k, v in cfg.items() if k != "sec_user_agent"}, "rows": [], "session": None, "error": None}
         try:
             state["session"], state["rows"] = scan(yf, cfg)
             try:
