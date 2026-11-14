@@ -780,6 +780,76 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".png": "
         ".webmanifest": "application/manifest+json", ".json": "application/json", ".css": "text/css"}
 
 
+# ---------------------------------------------------------------------------
+# Bot keys on the NAS (only when HUB_SECRETS_DIR is set, i.e. inside the NAS app).
+# Write-only: values are saved to the private secrets folder and never sent back.
+# ---------------------------------------------------------------------------
+SECRETS_DIR = os.environ.get("HUB_SECRETS_DIR") or ""
+SECRET_FILES = {"telegram_api": "telegram.env", "telegram_session": "telegram_session.session",
+                "vibe_env": os.path.join("vibe-trading", ".env")}
+
+
+def secrets_status():
+    return {k: bool(SECRETS_DIR) and os.path.isfile(os.path.join(SECRETS_DIR, f)) for k, f in SECRET_FILES.items()}
+
+
+def save_secrets(body):
+    import base64
+    saved = []
+
+    def write(rel, data):
+        fp = os.path.join(SECRETS_DIR, rel)
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        tmp = fp + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, fp)
+
+    api_id, api_hash = str(body.get("telegram_api_id") or "").strip(), str(body.get("telegram_api_hash") or "").strip()
+    if api_id or api_hash:
+        if not (api_id.isdigit() and re.fullmatch(r"[0-9a-fA-F]{32}", api_hash)):
+            raise ValueError("Telegram API ID must be digits and API hash 32 hex characters.")
+        write(SECRET_FILES["telegram_api"], f"TELEGRAM_API_ID={api_id}\nTELEGRAM_API_HASH={api_hash}\n".encode())
+        saved.append("Telegram API ID + hash")
+    if body.get("telegram_session_b64"):
+        data = base64.b64decode(body["telegram_session_b64"])
+        if not data.startswith(b"SQLite format 3"):
+            raise ValueError("That is not a Telegram .session file.")
+        write(SECRET_FILES["telegram_session"], data)
+        saved.append("Telegram session")
+    if body.get("vibe_env_text"):
+        text = str(body["vibe_env_text"]).replace("\r\n", "\n")
+        if "=" not in text:
+            raise ValueError("The Vibe-Trading .env should contain NAME=value lines.")
+        write(SECRET_FILES["vibe_env"], text.encode("utf-8"))
+        saved.append("Vibe-Trading .env")
+    hub_log("keys saved to the NAS secrets folder: " + (", ".join(saved) or "nothing"))
+    return saved
+
+
+SECRETS_PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trading hub keys</title><style>body{font:15px/1.5 system-ui,sans-serif;max-width:620px;margin:24px auto;padding:0 16px;background:#0d1117;color:#e6edf3}
+label{display:block;margin:14px 0 4px}input,textarea{width:100%;box-sizing:border-box;padding:8px;background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px}
+button{margin-top:18px;padding:10px 18px;background:#238636;color:#fff;border:0;border-radius:6px;font-size:15px}.ok{color:#3fb950}.no{color:#d29922}small{color:#8b949e}</style></head>
+<body><h2>Trading hub keys (NAS)</h2><p><small>Saved only in the private NAS folder used by the trading-hub app. Not on S:, not in GitHub, never shown again. Leave a field empty to keep what is saved.</small></p>
+<p id="st">Checking...</p>
+<label>Telegram API ID</label><input id="id" autocomplete="off" inputmode="numeric">
+<label>Telegram API hash</label><input id="hash" autocomplete="off">
+<label>Telegram session file <small>(telegram_session.session from the PC trading-paperbot folder)</small></label><input id="sess" type="file" accept=".session">
+<label>Vibe-Trading .env <small>(contents of C:\\Users\\asid3\\.vibe-trading\\.env)</small></label><textarea id="env" rows="6" autocomplete="off" spellcheck="false"></textarea>
+<button id="save">Save keys</button><p id="msg"></p>
+<script>
+const st=async()=>{const r=await (await fetch('/api/secrets/status')).json();document.getElementById('st').innerHTML=
+[['telegram_api','Telegram API'],['telegram_session','Telegram session'],['vibe_env','Vibe-Trading .env']].map(([k,n])=>`${n}: <b class="${r[k]?'ok':'no'}">${r[k]?'saved':'missing'}</b>`).join(' &middot; ')};st();
+document.getElementById('save').onclick=async()=>{const b={telegram_api_id:document.getElementById('id').value,telegram_api_hash:document.getElementById('hash').value,vibe_env_text:document.getElementById('env').value};
+const f=document.getElementById('sess').files[0];if(f){const buf=new Uint8Array(await f.arrayBuffer());let s='';for(const x of buf)s+=String.fromCharCode(x);b.telegram_session_b64=btoa(s)}
+const r=await fetch('/api/secrets',{method:'POST',headers:{'Content-Type':'application/json','X-Hub-Secrets':'1'},body:JSON.stringify(b)});const j=await r.json();
+document.getElementById('msg').textContent=j.error?('Not saved: '+j.error):('Saved: '+(j.saved.join(', ')||'nothing new'));
+for(const i of ['id','hash','env'])document.getElementById(i).value='';document.getElementById('sess').value='';st()};
+</script></body></html>"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -811,6 +881,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(full_state())
         if path == "/api/ping":
             return self._json({"ok": True, "hub": "brain-trading"})
+        if path == "/api/secrets/status":
+            return self._json(secrets_status())
+        if path == "/secrets" and SECRETS_DIR:
+            data = SECRETS_PAGE.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path == "/api/scan":
             # Pre-market movers from Yahoo (no API key); Finnhub's free quote has no pre-market prices.
             try:
@@ -835,6 +916,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parts = urlparse(self.path).path.strip("/").split("/")
+        if parts == ["api", "secrets"]:
+            # Same page only: the custom header blocks other websites (CORS does not allow it) and Origin must match.
+            origin = self.headers.get("Origin") or ""
+            if not SECRETS_DIR or self.headers.get("X-Hub-Secrets") != "1" or \
+                    (origin and urlparse(origin).netloc != (self.headers.get("Host") or "")):
+                return self._json({"error": "not allowed"}, 403)
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > 5_000_000:
+                return self._json({"error": "too large"}, 413)
+            try:
+                return self._json({"ok": True, "saved": save_secrets(json.loads(self.rfile.read(n) or b"{}"))})
+            except Exception as e:
+                return self._json({"error": str(e)[:200]}, 400)
         if parts[:2] == ["api", "service"] and len(parts) == 4 and parts[2] in SVC:
             s, act = SVC[parts[2]], parts[3]
             if act == "start":

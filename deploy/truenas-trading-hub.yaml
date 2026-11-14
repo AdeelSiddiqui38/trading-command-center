@@ -1,28 +1,39 @@
-# Trading Command Center hub on TrueNAS SCALE (Apps > Discover > Custom App > Install via YAML), app name: trading-hub
+# Trading Command Center hub on TrueNAS SCALE (Apps > trading-hub > Edit, or Custom App > Install via YAML), app name: trading-hub
 # Sarah Slot 03. Runs the paper bots 24/7 so the PC is no longer needed. PAPER ONLY: no broker, no orders, no real money.
 #
 # - Code: on every start the latest hub files are pulled from GitHub (brain-hub/) into the company folder.
-# - Bots + their portfolios/logs live in the company folder: /mnt/storage/sarah/projects/Trading Command Center
-#   (S:\Trading Command Center). Sarah reads those files read-only for the Paper Bots agent and its alerts.
+# - Bots + portfolios/logs live in the company folder /mnt/storage/sarah/projects/Trading Command Center (S:).
+#   Sarah reads those files read-only for the Paper Bots agent and its alerts.
+# - Keys (Telegram API + session, Vibe-Trading .env) live ONLY in /mnt/storage/sarah/trading-secrets, which is not
+#   shared over SMB and is mounted only here. Enter them at http://10.0.0.110:7777/secrets (write-only page).
+# - Python packages are kept in /mnt/storage/sarah/trading-venv so restarts are quick.
 # - Which bots run is set in "Trading Command Center\trading-hub\hub_config.json" (autostart).
-# - Dashboard API on the LAN only: http://10.0.0.110:7777/api/state (no internet port, no secrets in this app).
 services:
   trading-hub:
     image: python:3.12-slim
     environment:
       TZ: America/Edmonton
       BRAIN_NO_OPEN: "1"
+      HUB_SECRETS_DIR: /secrets
+      TELEGRAM_SECRETS_DIR: /secrets
+      PATH: /venv/bin:/usr/local/bin:/usr/bin:/bin
       PIP_ROOT_USER_ACTION: ignore
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
     volumes:
       - "/mnt/storage/sarah/projects/Trading Command Center:/tcc"
+      - /mnt/storage/sarah/trading-secrets:/secrets
+      - /mnt/storage/sarah/trading-venv:/venv
     ports:
       - "7777:7777"
     command:
       - sh
       - -c
       - |
-        pip install -q yfinance pandas tzdata
+        chmod 700 /secrets
+        mkdir -p /secrets/vibe-trading && ln -sfn /secrets/vibe-trading /root/.vibe-trading
+        [ -x /venv/bin/python ] || /usr/local/bin/python -m venv /venv
+        REQ="yfinance pandas tzdata telethon openai ccxt https://github.com/HKUDS/Vibe-Trading/archive/0244eceaaf8d9e8ae79e2355836802acae3d1fc2.zip"
+        if [ "$$(cat /venv/.req 2>/dev/null)" != "$$REQ" ]; then pip install -q $$REQ && echo "$$REQ" > /venv/.req; fi
         cd /tcc/trading-hub
         for f in hub.py prices.py gappers.py yahoo_scan.py; do
           python -c "import sys,urllib.request; d=urllib.request.urlopen('https://raw.githubusercontent.com/AdeelSiddiqui38/trading-command-center/main/brain-hub/'+sys.argv[1], timeout=30).read(); open(sys.argv[1]+'.new','wb').write(d)" $$f && mv -f $$f.new $$f || echo "kept local $$f"
