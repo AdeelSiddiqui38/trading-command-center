@@ -59,6 +59,7 @@ except Exception:
 
 DEFAULT_CONFIG = {
     "port": 7777,
+    "bind": "127.0.0.1",  # the NAS app sets 0.0.0.0 so the LAN can reach the dashboard API
     "app_url": "https://adeelsiddiqui38.github.io/trading-command-center/index.html",
     "chrome_app_id": "pgmmaaemnofafbhjagpfmmaegijlibbb",
     "bot_dir": os.path.join(BRAIN_DIR, "trading-paperbot"),
@@ -921,7 +922,7 @@ def main():
         return
 
     try:
-        _server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        _server = ThreadingHTTPServer((CFG.get("bind") or "127.0.0.1", PORT), Handler)
     except OSError as e:
         hub_log(f"port {PORT} busy ({e}); opening app anyway")
         if "--no-open" not in args:
