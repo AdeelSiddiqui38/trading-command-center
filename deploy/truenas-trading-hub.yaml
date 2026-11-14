@@ -32,8 +32,11 @@ services:
         chmod 700 /secrets
         mkdir -p /secrets/vibe-trading && ln -sfn /secrets/vibe-trading /root/.vibe-trading
         [ -x /venv/bin/python ] || /usr/local/bin/python -m venv /venv
-        REQ="yfinance pandas tzdata telethon openai ccxt https://github.com/HKUDS/Vibe-Trading/archive/0244eceaaf8d9e8ae79e2355836802acae3d1fc2.zip"
-        if [ "$$(cat /venv/.req 2>/dev/null)" != "$$REQ" ]; then pip install -q $$REQ && echo "$$REQ" > /venv/.req; fi
+        BASE="yfinance pandas tzdata telethon openai ccxt"
+        if [ "$$(cat /venv/.req-base 2>/dev/null)" != "$$BASE" ]; then pip install -q $$BASE && echo "$$BASE" > /venv/.req-base; fi
+        # Vibe-Trading from PyPI (the GitHub snapshot's ccxt pin did not resolve); a failure here only affects the equity bot
+        VIBE="vibe-trading-ai==0.1.15"
+        if [ "$$(cat /venv/.req-vibe 2>/dev/null)" != "$$VIBE" ]; then pip install -q $$VIBE && echo "$$VIBE" > /venv/.req-vibe || echo "Vibe-Trading install failed (equity bot only)"; fi
         cd /tcc/trading-hub
         for f in hub.py prices.py gappers.py yahoo_scan.py; do
           python -c "import sys,urllib.request; d=urllib.request.urlopen('https://raw.githubusercontent.com/AdeelSiddiqui38/trading-command-center/main/brain-hub/'+sys.argv[1], timeout=30).read(); open(sys.argv[1]+'.new','wb').write(d)" $$f && mv -f $$f.new $$f || echo "kept local $$f"
